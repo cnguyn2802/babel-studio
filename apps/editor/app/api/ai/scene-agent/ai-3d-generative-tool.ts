@@ -1136,7 +1136,9 @@ function getProviderConfigurationError(
   }
 
   if (requested === 'ollama') {
-    return null
+    return isOllamaConfigured(env)
+      ? null
+      : 'Set OLLAMA_BASE_URL or OLLAMA_MODEL, or set AI_PROVIDER=auto.'
   }
 
   if (requested === 'qwen') {
