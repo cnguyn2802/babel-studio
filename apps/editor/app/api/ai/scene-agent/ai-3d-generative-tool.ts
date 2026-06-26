@@ -2891,6 +2891,17 @@ class GraphSession {
     const name =
       typeof args.name === 'string' && args.name.trim() ? args.name.trim() : 'Outdoor pergola'
     const pergolaDimensions: [number, number, number] = [width, height, depth]
+    const metadata: Record<string, unknown> = {
+      aiTool: 'create_pergola',
+      roomType: 'pergola',
+      outdoorLiving: true,
+      assetId: pergolaAsset.id,
+      supportYOffset,
+    }
+    if (support) {
+      metadata.supportedByDeckId = support.deckItemId
+      metadata.supportSurfaceY = support.surfaceY
+    }
 
     const pergola = ItemNode.parse({
       name,
@@ -2899,15 +2910,7 @@ class GraphSession {
       rotation: [0, rotationY, 0],
       scale: [1, 1, 1],
       asset: createItemAssetPayload(pergolaAsset, pergolaDimensions),
-      metadata: {
-        aiTool: 'create_pergola',
-        roomType: 'pergola',
-        outdoorLiving: true,
-        assetId: pergolaAsset.id,
-        supportedByDeckId: support?.deckItemId,
-        supportSurfaceY: support?.surfaceY,
-        supportYOffset,
-      },
+      metadata,
     })
 
     this.applyPatch([{ op: 'create', node: pergola, parentId: levelId }])
@@ -3040,6 +3043,7 @@ class GraphSession {
     const position = this.nextFurniturePosition(args, asset)
     const rotationY = readNumberArg(args, 'rotationY') ?? readArrayNumber(args.rotation, 1) ?? 0
     const itemAsset = createItemAssetPayload(asset)
+    const deckSupport = this.findOutdoorLivingDeckSupportAt(position[0], position[2])
 
     const item = ItemNode.parse({
       name: asset.name,
@@ -3051,8 +3055,7 @@ class GraphSession {
       metadata: {
         aiTool: 'add_furniture',
         assetId: asset.id,
-        supportedByDeckId: this.findOutdoorLivingDeckSupportAt(position[0], position[2])
-          ?.deckItemId,
+        ...(deckSupport ? { supportedByDeckId: deckSupport.deckItemId } : {}),
       },
     })
     this.applyPatch([{ op: 'create', node: item, parentId: levelId }])
