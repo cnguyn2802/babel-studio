@@ -29,6 +29,16 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '100mb',
     },
   },
+  outputFileTracingExcludes: {
+    '/*': [
+      './public/**',
+      './.next/cache/**',
+      '../../.turbo/**',
+      '../../apps/editor/public/**',
+      '../../apps/ifc-converter/**',
+      '../../**/*.tsbuildinfo',
+    ],
+  },
   images: {
     unoptimized: process.env.NEXT_PUBLIC_ASSETS_CDN_URL?.startsWith('http://localhost') ?? false,
     remotePatterns: [
