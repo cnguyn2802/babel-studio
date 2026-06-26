@@ -1,6 +1,19 @@
 import { loadAssetUrl } from '@pascal-app/core'
 
 export const ASSETS_CDN_URL = process.env.NEXT_PUBLIC_ASSETS_CDN_URL || 'https://editor.pascal.app'
+const DEFAULT_ASSETS_CDN_URL = 'https://editor.pascal.app'
+
+function resolvePathUrl(url: string): string {
+  const normalizedPath = url.startsWith('/') ? url : `/${url}`
+  if (
+    ASSETS_CDN_URL === DEFAULT_ASSETS_CDN_URL &&
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
+    return `${window.location.origin}${normalizedPath}`
+  }
+  return `${ASSETS_CDN_URL}${normalizedPath}`
+}
 
 /**
  * Resolves an asset URL to the appropriate format:
@@ -23,8 +36,7 @@ export async function resolveAssetUrl(url: string | undefined | null): Promise<s
   }
 
   // Absolute or relative path - prepend CDN URL
-  const normalizedPath = url.startsWith('/') ? url : `/${url}`
-  return `${ASSETS_CDN_URL}${normalizedPath}`
+  return resolvePathUrl(url)
 }
 
 /**
@@ -46,6 +58,5 @@ export function resolveCdnUrl(url: string | undefined | null): string | null {
   }
 
   // Absolute or relative path - prepend CDN URL
-  const normalizedPath = url.startsWith('/') ? url : `/${url}`
-  return `${ASSETS_CDN_URL}${normalizedPath}`
+  return resolvePathUrl(url)
 }

@@ -12,6 +12,7 @@ export { default as Editor } from './components/editor'
 // surface uses the shorter, shell-friendly names from the unified
 // preset-system spec.
 export { FloatingActionMenu as FloatingMenu } from './components/editor/floating-action-menu'
+export { Grid } from './components/editor/grid'
 export {
   type SnapshotCameraData,
   ThumbnailGenerator,
@@ -34,6 +35,7 @@ export {
   type FencePlanPoint,
   snapFenceDraftPoint,
 } from './components/tools/fence/fence-drafting'
+export { ImportPlacementTool } from './components/tools/import-placement-tool'
 // Placement-math helpers — shared by kind-owned placement tools in
 // `@pascal-app/nodes` (wall curve sagitta snap, door / window placement,
 // item drop) so kinds don't reach into editor internals.
@@ -204,13 +206,15 @@ export { default as useAudio } from './store/use-audio'
 export { type CommandAction, useCommandRegistry } from './store/use-command-registry'
 export type {
   FloorplanSelectionTool,
+  ImportedModelFormat,
   MovingFenceEndpoint,
   MovingWallEndpoint,
+  PendingImportPlacement,
   SplitOrientation,
   ToolDefaults,
   ViewMode,
 } from './store/use-editor'
-export { default as useEditor } from './store/use-editor'
+export { default as useEditor, selectDefaultBuildingAndLevel } from './store/use-editor'
 export {
   type PaletteView,
   type PaletteViewProps,

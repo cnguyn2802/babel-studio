@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useCallback, useEffect, useRef } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../../hooks/use-mobile'
 import useEditor from '../../store/use-editor'
 
@@ -9,12 +9,10 @@ import { IconRail, type SidebarTab } from '../ui/sidebar/tab-bar'
 import { EditorLayoutMobile } from './editor-layout-mobile'
 
 const SIDEBAR_MIN_WIDTH = 300
-const SIDEBAR_MAX_WIDTH = 800
-const SIDEBAR_COLLAPSE_THRESHOLD = 220
-// Matches the `w-14` rail in <IconRail>; the resize math is relative to it.
-const RAIL_WIDTH = 56
+const SIDEBAR_POPOUT_DEFAULT_WIDTH = 340
+const SIDEBAR_POPOUT_MAX_WIDTH = 380
 
-// ── Left column: resizable panel with tab bar ────────────────────────────────
+// ── Left column: icon rail with pop-out panel ────────────────────────────────
 
 function LeftColumn({
   tabs,
@@ -28,13 +26,21 @@ function LeftColumn({
   const width = useSidebarStore((s) => s.width)
   const isCollapsed = useSidebarStore((s) => s.isCollapsed)
   const setIsCollapsed = useSidebarStore((s) => s.setIsCollapsed)
-  const setWidth = useSidebarStore((s) => s.setWidth)
-  const isDragging = useSidebarStore((s) => s.isDragging)
-  const setIsDragging = useSidebarStore((s) => s.setIsDragging)
   const activePanel = useEditor((s) => s.activeSidebarPanel)
   const setActivePanel = useEditor((s) => s.setActiveSidebarPanel)
 
-  const isResizing = useRef(false)
+  const columnRef = useRef<HTMLDivElement>(null)
+  const [hasInitializedPopout, setHasInitializedPopout] = useState(false)
+  const isPopoutOpen = hasInitializedPopout && !isCollapsed
+  const popoutWidth =
+    width >= SIDEBAR_MIN_WIDTH
+      ? Math.min(width, SIDEBAR_POPOUT_MAX_WIDTH)
+      : SIDEBAR_POPOUT_DEFAULT_WIDTH
+
+  useEffect(() => {
+    setIsCollapsed(true)
+    setHasInitializedPopout(true)
+  }, [setIsCollapsed])
 
   // Ensure active panel is a valid tab
   useEffect(() => {
@@ -52,90 +58,79 @@ function LeftColumn({
     }
   }, [activePanel])
 
-  const handleResizerDown = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault()
-      isResizing.current = true
-      setIsDragging(true)
-      document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
-    },
-    [setIsDragging],
-  )
-
-  // Rail click: reopen a collapsed panel, collapse when re-clicking the open
-  // tab, otherwise switch tabs. Reopening clamps below-min persisted widths
-  // up to the minimum so the panel always returns to a usable size.
+  // Rail click: open the pop-out for a tab, close it when re-clicking the
+  // active tab, otherwise switch content while keeping the menu open.
   const handleRailClick = useCallback(
     (id: string) => {
-      if (isCollapsed) {
-        setIsCollapsed(false)
-        if (width < SIDEBAR_MIN_WIDTH) setWidth(SIDEBAR_MIN_WIDTH)
-        setActivePanel(id)
-        return
-      }
-      if (id === activePanel) {
+      if (id === activePanel && !isCollapsed) {
         setIsCollapsed(true)
         return
       }
-      setActivePanel(id)
+      if (id !== activePanel) {
+        setActivePanel(id)
+        setIsCollapsed(false)
+        return
+      }
+      if (isCollapsed) {
+        setActivePanel(id)
+        setIsCollapsed(false)
+        return
+      }
     },
-    [isCollapsed, width, activePanel, setIsCollapsed, setWidth, setActivePanel],
+    [isCollapsed, activePanel, setIsCollapsed, setActivePanel],
   )
 
   useEffect(() => {
-    const handlePointerMove = (e: PointerEvent) => {
-      if (!isResizing.current) return
-      // Rail occupies the leftmost 48px; the panel starts after it.
-      const newWidth = e.clientX - RAIL_WIDTH
-      if (newWidth < SIDEBAR_COLLAPSE_THRESHOLD) {
-        setIsCollapsed(true)
-      } else {
-        setIsCollapsed(false)
-        setWidth(Math.max(SIDEBAR_MIN_WIDTH, Math.min(newWidth, SIDEBAR_MAX_WIDTH)))
+    if (!isPopoutOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (columnRef.current?.contains(target)) return
+      if (
+        target instanceof Element &&
+        target.closest(
+          '[data-radix-popper-content-wrapper], [data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"], [role="dialog"], [role="menu"]',
+        )
+      ) {
+        return
       }
+      setIsCollapsed(true)
     }
-    const handlePointerUp = () => {
-      isResizing.current = false
-      setIsDragging(false)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsCollapsed(true)
     }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [setWidth, setIsCollapsed, setIsDragging])
+  }, [isPopoutOpen, setIsCollapsed])
 
   return (
-    <div className="relative z-10 flex h-full flex-shrink-0 bg-sidebar text-sidebar-foreground">
+    <div
+      className="relative z-40 flex h-full w-14 flex-shrink-0 bg-sidebar text-sidebar-foreground"
+      ref={columnRef}
+    >
       <IconRail
         activeTab={activePanel}
-        collapsed={isCollapsed}
+        collapsed={!isPopoutOpen}
         onIconClick={handleRailClick}
         tabs={tabs}
       />
-      {!isCollapsed && (
+      {isPopoutOpen && (
         <div
-          className="relative flex h-full flex-col"
+          className="absolute top-2 bottom-2 left-14 z-40 flex max-w-[calc(100vw-5rem)] flex-col overflow-hidden rounded-lg border border-border/70 bg-sidebar/95 text-sidebar-foreground shadow-2xl backdrop-blur-xl"
           style={{
-            width,
-            transition: isDragging ? 'none' : 'width 150ms ease',
+            width: popoutWidth,
           }}
         >
           <div className="relative flex flex-1 flex-col overflow-hidden">
             {renderTabContent(activePanel)}
             {sidebarOverlay && <div className="absolute inset-0 z-50">{sidebarOverlay}</div>}
-          </div>
-
-          {/* Resize handle + hit area */}
-          <div
-            className="absolute inset-y-0 -right-3 z-[100] flex w-6 cursor-col-resize items-center justify-center"
-            onPointerDown={handleResizerDown}
-          >
-            <div className="h-8 w-1 rounded-full bg-neutral-500" />
           </div>
         </div>
       )}

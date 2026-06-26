@@ -6,6 +6,7 @@ import { wallFloorplanSiblingOverrides } from './floorplan-overrides'
 import { wallPaint } from './paint'
 import { wallParametrics } from './parametrics'
 import { WallNode } from './schema'
+import { wallSlots } from './slots'
 
 /**
  * Wall — the Phase 3 stress test of the registry-driven node model.
@@ -56,6 +57,7 @@ export const wallDefinition: NodeDefinition<typeof WallNode> = {
     // preview through this entry rather than carrying a kind-name
     // arm.
     paint: wallPaint,
+    slots: () => wallSlots(),
   },
 
   relations: {

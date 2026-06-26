@@ -60,7 +60,15 @@ const WallRenderer = ({ node }: { node: WallNode }) => {
   const textures = useViewer((s) => s.textures)
   const colorPreset = useViewer((s) => s.colorPreset)
   const sceneTheme = useViewer((s) => s.sceneTheme)
-  const material = getVisibleWallMaterials(node, shading, textures, colorPreset, sceneTheme)
+  const sceneMaterials = useScene((s) => s.materials)
+  const material = getVisibleWallMaterials(
+    node,
+    shading,
+    textures,
+    colorPreset,
+    sceneTheme,
+    sceneMaterials,
+  )
 
   return (
     <mesh

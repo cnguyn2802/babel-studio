@@ -6,6 +6,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import * as THREE from 'three/webgpu'
 import { PERF_OVERLAY_ENABLED, pushGpuSample } from '../../lib/gpu-perf'
 import { applyIsolation, clearIsolation } from '../../lib/isolation'
+import { ensureKtx2Support } from '../../lib/ktx2-loader'
 import type { ColorPreset, RenderShading } from '../../lib/materials'
 import { getSceneTheme } from '../../lib/scene-themes'
 import useViewer, { type RenderContext } from '../../store/use-viewer'
@@ -68,6 +69,8 @@ function GPUDeviceWatcher() {
   const gl = useThree((s) => s.gl)
 
   useEffect(() => {
+    ensureKtx2Support(gl)
+
     const backend = (gl as any).backend
     const device = backend?.device as WebGPUDeviceLike | undefined
 
@@ -189,13 +192,18 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
   }, [isolate])
 
   const isDark = useViewer((state) => getSceneTheme(state.sceneTheme).appearance === 'dark')
+  const defaultShading = defaultRender?.shading
+  const defaultTextures = defaultRender?.textures
+  const defaultColorPreset = defaultRender?.colorPreset
+  const hasDefaultRender = defaultRender != null
+
   useEffect(() => {
     const ctx = renderContext
     useViewer.getState().setRenderContext(ctx)
     const { shading, shadingByContext, setShading } = useViewer.getState()
-    setShading(shadingByContext[ctx] ?? defaultRender?.shading ?? shading)
+    setShading(shadingByContext[ctx] ?? defaultShading ?? shading)
 
-    if (!defaultRender || typeof window === 'undefined') return
+    if (!hasDefaultRender || typeof window === 'undefined') return
 
     let persistedState: Record<string, unknown> = {}
     const rawPreferences = window.localStorage.getItem('viewer-preferences')
@@ -213,13 +221,13 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
       } catch {}
     }
 
-    if (defaultRender.textures !== undefined && !('textures' in persistedState)) {
-      useViewer.getState().setTextures(defaultRender.textures)
+    if (defaultTextures !== undefined && !('textures' in persistedState)) {
+      useViewer.getState().setTextures(defaultTextures)
     }
-    if (defaultRender.colorPreset && !('colorPreset' in persistedState)) {
-      useViewer.getState().setColorPreset(defaultRender.colorPreset)
+    if (defaultColorPreset && !('colorPreset' in persistedState)) {
+      useViewer.getState().setColorPreset(defaultColorPreset)
     }
-  }, [])
+  }, [defaultColorPreset, defaultShading, defaultTextures, hasDefaultRender, renderContext])
 
   // Coarse-pointer devices (phones/tablets) get a tighter DPR ceiling to keep
   // fragment-shader cost down — saves another ~30% over 1.5x on high-DPI mobile.
@@ -267,7 +275,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
         enabled: true,
       }}
     >
-      <FrameLimiter fps={50} />
+      <FrameLimiter fps={60} />
       <ViewerCamera />
       <GPUDeviceWatcher />
       <ToneMappingExposure />
@@ -301,7 +309,7 @@ const Viewer = forwardRef<ViewerHandle, ViewerProps>(function Viewer(
             kind's `def.system` is loaded via lazy() and rendered here,
             ordered by `system.priority`. */}
         <RegisteredSystems />
-        <PostProcessing hoverStyles={hoverStyles} />
+        <PostProcessing hoverStyles={hoverStyles} perf={perf || PERF_OVERLAY_ENABLED} />
         {selectionManager === 'default' && <SelectionManager />}
         {(perf || PERF_OVERLAY_ENABLED) && <PerfMonitor />}
         {children}

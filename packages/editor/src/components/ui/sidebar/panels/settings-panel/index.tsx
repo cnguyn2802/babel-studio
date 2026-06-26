@@ -1,4 +1,11 @@
-import { emitter, useScene, validateBuildJson } from '@pascal-app/core'
+import {
+  type AnyNode,
+  type AnyNodeId,
+  emitter,
+  saveAsset,
+  useScene,
+  validateBuildJson,
+} from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
 import { TreeView, VisualJson } from '@visual-json/react'
 import { Camera, Download, Save, Trash2, Upload } from 'lucide-react'
@@ -18,7 +25,10 @@ import {
   DialogTrigger,
 } from './../../../../../components/ui/primitives/dialog'
 import { Switch } from './../../../../../components/ui/primitives/switch'
-import useEditor, { selectDefaultBuildingAndLevel } from './../../../../../store/use-editor'
+import useEditor, {
+  type ImportedModelFormat,
+  selectDefaultBuildingAndLevel,
+} from './../../../../../store/use-editor'
 import { AudioSettingsDialog } from './audio-settings-dialog'
 import { KeyboardShortcutsDialog } from './keyboard-shortcuts-dialog'
 import { LoadBuildDialog, type PendingImport } from './load-build-dialog'
@@ -44,6 +54,38 @@ type SceneGraphNode = {
 type SceneGraphValue = {
   roots: SceneGraphNode[]
   detachedNodes?: SceneGraphNode[]
+}
+
+type Importable3DFormat = ImportedModelFormat | 'ifc'
+
+type ImportableSceneGraph = {
+  nodes: Record<string, unknown>
+  rootNodeIds: string[]
+}
+
+const MODEL_IMPORT_EXTENSIONS: Record<string, Importable3DFormat> = {
+  glb: 'glb',
+  gltf: 'gltf',
+  stl: 'stl',
+  obj: 'obj',
+  ifc: 'ifc',
+}
+
+const MODEL_IMPORT_ACCEPT = '.ifc,.glb,.gltf,.stl,.obj'
+const MAX_MODEL_IMPORT_SIZE = 250 * 1024 * 1024
+
+function getFileExtension(fileName: string) {
+  return fileName.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function detectImportable3DFormat(fileName: string): Importable3DFormat | null {
+  return MODEL_IMPORT_EXTENSIONS[getFileExtension(fileName)] ?? null
+}
+
+function getImportDisplayName(fileName: string) {
+  const trimmed = fileName.trim()
+  const dotIndex = trimmed.lastIndexOf('.')
+  return dotIndex > 0 ? trimmed.slice(0, dotIndex) : trimmed || 'Imported model'
 }
 
 const isSceneNode = (value: unknown): value is SceneNode => {
@@ -165,6 +207,7 @@ export interface ProjectVisibility {
 export interface SettingsPanelProps {
   projectId?: string
   projectVisibility?: ProjectVisibility
+  onImportIfcFile?: (file: File) => Promise<ImportableSceneGraph>
   onVisibilityChange?: (
     field: 'isPrivate' | 'showScansPublic' | 'showGuidesPublic',
     value: boolean,
@@ -172,11 +215,13 @@ export interface SettingsPanelProps {
 }
 
 export function SettingsPanel({
+  onImportIfcFile,
   projectId,
   projectVisibility,
   onVisibilityChange,
 }: SettingsPanelProps = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const modelInputRef = useRef<HTMLInputElement>(null)
   const nodes = useScene((state) => state.nodes)
   const rootNodeIds = useScene((state) => state.rootNodeIds)
   const setScene = useScene((state) => state.setScene)
@@ -185,8 +230,16 @@ export function SettingsPanel({
   const exportScene = useViewer((state) => state.exportScene)
   const showGrid = useViewer((state) => state.showGrid)
   const shadows = useViewer((state) => state.shadows)
+  const setShowGrid = useViewer((state) => state.setShowGrid)
+  const setShowScans = useViewer((state) => state.setShowScans)
+  const setSelection = useViewer((state) => state.setSelection)
   const setPhase = useEditor((state) => state.setPhase)
+  const setMode = useEditor((state) => state.setMode)
+  const pendingImportPlacement = useEditor((state) => state.pendingImportPlacement)
+  const setPendingImportPlacement = useEditor((state) => state.setPendingImportPlacement)
   const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false)
+  const [isPreparingModelImport, setIsPreparingModelImport] = useState(false)
+  const [modelImportError, setModelImportError] = useState<string | null>(null)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null)
   const sceneGraphValue = useMemo(
     () => buildSceneGraphValue(nodes as Record<string, SceneNode>, rootNodeIds),
@@ -262,14 +315,95 @@ export function SettingsPanel({
     e.target.value = ''
   }
 
-  const handleConfirmImport = (parsed: { nodes: Record<string, unknown>; rootNodeIds: string[] }) => {
+  const handleConfirmImport = (parsed: {
+    nodes: Record<string, unknown>
+    rootNodeIds: string[]
+    collections?: Record<string, unknown>
+    materials?: Record<string, unknown>
+  }) => {
     setScene(
       parsed.nodes as Parameters<typeof setScene>[0],
       parsed.rootNodeIds as Parameters<typeof setScene>[1],
+      {
+        collections: parsed.collections as any,
+        materials: parsed.materials as any,
+      },
     )
     resetSelection()
     setPhase('site')
     setPendingImport(null)
+  }
+
+  const handleModelImportLoad = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    const format = detectImportable3DFormat(file.name)
+    if (!format) {
+      setModelImportError('Choose an IFC, GLB, GLTF, STL, or OBJ file.')
+      return
+    }
+
+    if (file.size > MAX_MODEL_IMPORT_SIZE) {
+      setModelImportError(
+        `File is too large (${(file.size / 1024 / 1024).toFixed(0)} MB). Maximum size is 250 MB.`,
+      )
+      return
+    }
+
+    setIsPreparingModelImport(true)
+    setModelImportError(null)
+    setPendingImportPlacement(null)
+
+    try {
+      setPhase('structure')
+      setMode('select')
+      setShowGrid(true)
+      setSelection({ selectedIds: [], zoneId: null })
+
+      if (format === 'ifc') {
+        if (!onImportIfcFile) {
+          throw new Error('IFC import is not configured in this app.')
+        }
+
+        const graph = await onImportIfcFile(file)
+        const result = validateBuildJson(graph)
+        if (!(result.ok && result.parsed)) {
+          throw new Error(result.errors[0]?.message ?? 'IFC conversion produced an invalid scene.')
+        }
+
+        setPendingImportPlacement({
+          kind: 'ifc-scene',
+          name: getImportDisplayName(file.name),
+          nodes: result.parsed.nodes as Record<AnyNodeId, AnyNode>,
+          rootNodeIds: result.parsed.rootNodeIds as AnyNodeId[],
+          snapToGrid: true,
+        })
+        return
+      }
+
+      selectDefaultBuildingAndLevel()
+      const levelId = useViewer.getState().selection.levelId
+      if (!levelId) {
+        throw new Error('No active level found for model import.')
+      }
+
+      const assetUrl = await saveAsset(file)
+      setShowScans(true)
+      setPendingImportPlacement({
+        kind: 'model',
+        name: getImportDisplayName(file.name),
+        url: assetUrl,
+        format,
+        levelId,
+        snapToGrid: true,
+      })
+    } catch (error) {
+      setModelImportError(error instanceof Error ? error.message : 'Could not prepare that import.')
+    } finally {
+      setIsPreparingModelImport(false)
+    }
   }
 
   const handleResetToDefault = () => {
@@ -424,6 +558,36 @@ export function SettingsPanel({
           ref={fileInputRef}
           type="file"
         />
+
+        <Button
+          className="w-full justify-start gap-2"
+          disabled={isPreparingModelImport}
+          onClick={() => modelInputRef.current?.click()}
+          variant="outline"
+        >
+          <Upload className="size-4" />
+          {isPreparingModelImport ? 'Preparing Import...' : 'Import IFC / 3D Model'}
+        </Button>
+
+        <input
+          accept={MODEL_IMPORT_ACCEPT}
+          className="hidden"
+          onChange={handleModelImportLoad}
+          ref={modelInputRef}
+          type="file"
+        />
+
+        {pendingImportPlacement && (
+          <div className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-muted-foreground text-xs">
+            Ready: {pendingImportPlacement.name}
+          </div>
+        )}
+
+        {modelImportError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-destructive text-xs">
+            {modelImportError}
+          </div>
+        )}
 
         <LoadBuildDialog
           onCancel={() => setPendingImport(null)}

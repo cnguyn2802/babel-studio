@@ -7,8 +7,10 @@ import {
 } from './floorplan-affordances'
 import { slabFloorplanMoveTarget } from './floorplan-move'
 import { buildSlabGeometry } from './geometry'
+import { slabPaint } from './paint'
 import { slabParametrics } from './parametrics'
 import { SlabNode } from './schema'
+import { slabSlots } from './slots'
 
 const HEIGHT_HANDLE_OFFSET = 0.22
 const MIN_SLAB_ELEVATION = 0.02
@@ -94,6 +96,8 @@ export const slabDefinition: NodeDefinition<typeof SlabNode> = {
     },
     duplicable: true,
     deletable: true,
+    slots: () => slabSlots(),
+    paint: slabPaint,
   },
 
   relations: {

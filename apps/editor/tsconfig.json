@@ -20,6 +20,8 @@
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"],
   "references": [
     { "path": "../../packages/core" },
+    { "path": "../../packages/ifc-converter" },
+    { "path": "../../packages/nodes" },
     { "path": "../../packages/viewer" }
   ]
 }

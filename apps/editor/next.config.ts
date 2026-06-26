@@ -12,7 +12,9 @@ const nextConfig: NextConfig = {
     '@pascal-app/viewer',
     '@pascal-app/core',
     '@pascal-app/editor',
+    '@pascal-app/ifc-converter',
     '@pascal-app/mcp',
+    '@pascal-app/nodes',
   ],
   turbopack: {
     resolveAlias: {
@@ -39,6 +41,10 @@ const nextConfig: NextConfig = {
         hostname: '**',
       },
     ],
+  },
+  webpack: (config) => {
+    config.experiments = { ...config.experiments, asyncWebAssembly: true }
+    return config
   },
 }
 

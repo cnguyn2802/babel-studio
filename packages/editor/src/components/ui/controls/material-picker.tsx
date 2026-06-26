@@ -22,8 +22,11 @@ type MaterialPickerProps = {
   hideSideControl?: boolean
 }
 
-function getCategoryLabel(category: (typeof MATERIAL_CATEGORIES)[number]) {
-  if (category === 'roof') return 'Roofing'
+type MaterialPickerCategory = (typeof MATERIAL_CATEGORIES)[number] | 'other'
+
+function getCategoryLabel(category: MaterialPickerCategory) {
+  if (category === 'roofing') return 'Roofing'
+  if (category === 'other') return 'Other'
   return category.charAt(0).toUpperCase() + category.slice(1)
 }
 
@@ -36,13 +39,12 @@ export function MaterialPicker({
 }: MaterialPickerProps) {
   const setPaintPanelOpen = useEditor((state) => state.setPaintPanelOpen)
   const [showCustom, setShowCustom] = useState<boolean>(!!value?.properties)
-  const [selectedCategory, setSelectedCategory] = useState<(typeof MATERIAL_CATEGORIES)[number]>(
-    MATERIAL_CATEGORIES[0],
-  )
+  const [selectedCategory, setSelectedCategory] =
+    useState<MaterialPickerCategory>(MATERIAL_CATEGORIES[0])
   const categoryScrollRef = useRef<HTMLDivElement>(null)
   const catalogItems =
     selectedCategory === 'other'
-      ? getMaterialsForCategory('other')
+      ? []
       : getMaterialsForCategory(selectedCategory)
 
   useEffect(() => {
@@ -133,9 +135,7 @@ export function MaterialPicker({
                     if (showCustom) {
                       setShowCustom(false)
                     }
-                    if (category !== 'other') {
-                      setPaintPanelOpen(false)
-                    }
+                    setPaintPanelOpen(false)
                   }}
                   type="button"
                 >

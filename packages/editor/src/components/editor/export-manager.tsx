@@ -3,28 +3,45 @@
 import { useViewer } from '@pascal-app/viewer'
 import { useThree } from '@react-three/fiber'
 import { useEffect } from 'react'
+import { Group, type Object3D } from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js'
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js'
 
-export function ExportManager() {
+export function ExportManager({
+  additionalRootNames,
+}: {
+  additionalRootNames?: readonly string[]
+}) {
   const scene = useThree((state) => state.scene)
   const setExportScene = useViewer((state) => state.setExportScene)
+  const additionalRootNamesKey = additionalRootNames?.join('\0') ?? ''
 
   useEffect(() => {
     const exportFn = async (format: 'glb' | 'stl' | 'obj' = 'glb') => {
-      // Find the scene renderer group by name
+      const extraRootNames = additionalRootNamesKey
+        ? additionalRootNamesKey.split('\0').filter(Boolean)
+        : []
       const sceneGroup = scene.getObjectByName('scene-renderer')
-      if (!sceneGroup) {
-        console.error('scene-renderer group not found')
+      const extraRoots = extraRootNames
+        .map((name) => scene.getObjectByName(name))
+        .filter((root): root is Object3D => Boolean(root))
+
+      if (!sceneGroup && extraRoots.length === 0) {
+        console.error('No exportable scene content found')
         return
       }
+
+      const exportRoot =
+        extraRoots.length === 0 && sceneGroup
+          ? sceneGroup
+          : createExportRoot(sceneGroup ? [sceneGroup, ...extraRoots] : extraRoots)
 
       const date = new Date().toISOString().split('T')[0]
 
       if (format === 'stl') {
         const exporter = new STLExporter()
-        const result = exporter.parse(sceneGroup, { binary: true })
+        const result = exporter.parse(exportRoot, { binary: true })
         const blob = new Blob([result], { type: 'model/stl' })
         downloadBlob(blob, `model_${date}.stl`)
         return
@@ -32,7 +49,7 @@ export function ExportManager() {
 
       if (format === 'obj') {
         const exporter = new OBJExporter()
-        const result = exporter.parse(sceneGroup)
+        const result = exporter.parse(exportRoot)
         const blob = new Blob([result], { type: 'model/obj' })
         downloadBlob(blob, `model_${date}.obj`)
         return
@@ -43,7 +60,7 @@ export function ExportManager() {
 
       return new Promise<void>((resolve, reject) => {
         exporter.parse(
-          sceneGroup,
+          exportRoot,
           (gltf) => {
             const blob = new Blob([gltf as ArrayBuffer], { type: 'model/gltf-binary' })
             downloadBlob(blob, `model_${date}.glb`)
@@ -63,9 +80,18 @@ export function ExportManager() {
     return () => {
       setExportScene(null)
     }
-  }, [scene, setExportScene])
+  }, [scene, setExportScene, additionalRootNamesKey])
 
   return null
+}
+
+function createExportRoot(roots: Object3D[]) {
+  const exportRoot = new Group()
+  exportRoot.name = 'export-root'
+  for (const root of roots) {
+    exportRoot.add(root.clone(true))
+  }
+  return exportRoot
 }
 
 function downloadBlob(blob: Blob, filename: string) {

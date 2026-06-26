@@ -1,6 +1,6 @@
 'use client'
 
-import { type BuildingNode, useRegistry } from '@pascal-app/core'
+import { type BuildingNode, useLiveTransforms, useRegistry } from '@pascal-app/core'
 import { NodeRenderer, useNodeEvents } from '@pascal-app/viewer'
 import { useRef } from 'react'
 import type { Group } from 'three'
@@ -10,12 +10,17 @@ export const BuildingRenderer = ({ node }: { node: BuildingNode }) => {
 
   useRegistry(node.id, node.type, ref)
   const handlers = useNodeEvents(node, 'building')
+  const liveTransform = useLiveTransforms((state) => state.get(node.id))
 
   return (
     <group
-      position={node.position}
+      position={liveTransform?.position ?? node.position}
       ref={ref}
-      rotation={[node.rotation[0], node.rotation[1], node.rotation[2]]}
+      rotation={
+        liveTransform?.rotation !== undefined
+          ? [node.rotation[0], liveTransform.rotation, node.rotation[2]]
+          : [node.rotation[0], node.rotation[1], node.rotation[2]]
+      }
       {...handlers}
     >
       {node.children.map((childId) => (

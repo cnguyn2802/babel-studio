@@ -3,7 +3,15 @@ import './node-shims'
 
 import type { SceneGraph } from '@pascal-app/core/clone-scene-graph'
 import type { AnyNode } from '@pascal-app/core/schema'
-import { type AnyNodeId, AnyNode as AnyNodeSchema, type AnyNodeType } from '@pascal-app/core/schema'
+import {
+  type AnyNodeId,
+  AnyNode as AnyNodeSchema,
+  type AnyNodeType,
+  type Collection,
+  type CollectionId,
+  type SceneMaterial,
+  type SceneMaterialId,
+} from '@pascal-app/core/schema'
 // Per PLAN §0.6: `useScene` is the DEFAULT export from `@pascal-app/core/store`.
 import useScene from '@pascal-app/core/store'
 import type { SceneMeta } from '../storage/types'
@@ -59,12 +67,22 @@ export class SceneBridge {
   }
 
   /** Replace entire scene (undoable via Zundo). */
-  setScene(nodes: Record<AnyNodeId, AnyNode>, rootNodeIds: AnyNodeId[]): void {
-    useScene.getState().setScene(nodes, rootNodeIds)
+  setScene(
+    nodes: Record<AnyNodeId, AnyNode>,
+    rootNodeIds: AnyNodeId[],
+    extra?: {
+      collections?: Record<CollectionId, Collection>
+      materials?: Record<SceneMaterialId, SceneMaterial>
+    },
+  ): void {
+    useScene.getState().setScene(nodes, rootNodeIds, extra)
   }
 
-  /** Full snapshot for export, including collections. */
-  exportJSON(): SceneGraph & { collections: Record<string, unknown> } {
+  /** Full snapshot for export, including collections and scene materials. */
+  exportJSON(): SceneGraph & {
+    collections: Record<string, unknown>
+    materials: Record<string, unknown>
+  } {
     const state = useScene.getState()
     // Deep-clone so callers can't mutate store state directly.
     return JSON.parse(
@@ -72,6 +90,7 @@ export class SceneBridge {
         nodes: state.nodes,
         rootNodeIds: state.rootNodeIds,
         collections: state.collections ?? {},
+        materials: state.materials ?? {},
       }),
     )
   }
@@ -100,6 +119,8 @@ export class SceneBridge {
     const obj = parsed as Record<string, unknown>
     const nodes = obj.nodes
     const rootNodeIds = obj.rootNodeIds
+    const collections = obj.collections
+    const materials = obj.materials
 
     if (!nodes || typeof nodes !== 'object' || Array.isArray(nodes)) {
       throw new Error('invalid scene: `nodes` must be an object')
@@ -116,7 +137,16 @@ export class SceneBridge {
       }
     }
 
-    this.setScene(nodes as Record<AnyNodeId, AnyNode>, rootNodeIds as AnyNodeId[])
+    this.setScene(nodes as Record<AnyNodeId, AnyNode>, rootNodeIds as AnyNodeId[], {
+      collections:
+        collections && typeof collections === 'object' && !Array.isArray(collections)
+          ? (collections as Record<CollectionId, Collection>)
+          : undefined,
+      materials:
+        materials && typeof materials === 'object' && !Array.isArray(materials)
+          ? (materials as Record<SceneMaterialId, SceneMaterial>)
+          : undefined,
+    })
   }
 
   /** Read a single node, or `null` if not present. */

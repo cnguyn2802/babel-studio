@@ -2,6 +2,7 @@
 
 import type { AssetInput } from '@pascal-app/core'
 import {
+  type AnyNode,
   type AnyNodeId,
   type BuildingNode,
   type CeilingNode,
@@ -114,6 +115,48 @@ export type GridSnapStep = 0.5 | 0.25 | 0.1 | 0.05
 
 // Combined tool type
 export type Tool = SiteTool | StructureTool | FurnishTool
+export type ImportedModelFormat = 'glb' | 'gltf' | 'stl' | 'obj'
+
+export type PendingImportPlacement =
+  | {
+      kind: 'model'
+      name: string
+      url: string
+      format: ImportedModelFormat
+      levelId: LevelNode['id']
+      snapToGrid: boolean
+    }
+  | {
+      kind: 'ifc-scene'
+      name: string
+      nodes: Record<AnyNodeId, AnyNode>
+      rootNodeIds: AnyNodeId[]
+      snapToGrid: boolean
+    }
+  | {
+      kind: 'catalog-item'
+      name: string
+      asset: AssetInput
+      levelId: LevelNode['id']
+      snapToGrid: boolean
+    }
+  | {
+      kind: 'catalog-build'
+      name: string
+      buildKind: 'wall' | 'fence' | 'slab' | 'ceiling' | 'roof'
+      levelId: LevelNode['id']
+      height: number
+      thickness: number
+      snapToGrid: boolean
+    }
+  | {
+      kind: 'move-existing'
+      name: string
+      nodeId: AnyNodeId
+      selectAsReference: boolean
+      space: 'building' | 'world'
+      snapToGrid: boolean
+    }
 
 /**
  * Starting parameters seeded into a draw tool before it mints a node.
@@ -140,6 +183,7 @@ export type MaterialTargetRole =
   | ChimneyMaterialRole
   | DormerSurfaceMaterialRole
   | SingleSurfaceMaterialRole
+  | string
 
 export type SelectedMaterialTarget = {
   nodeId: AnyNodeId
@@ -177,6 +221,8 @@ type EditorState = {
   setStructureLayer: (layer: StructureLayer) => void
   catalogCategory: CatalogCategory | null
   setCatalogCategory: (category: CatalogCategory | null) => void
+  pendingImportPlacement: PendingImportPlacement | null
+  setPendingImportPlacement: (placement: PendingImportPlacement | null) => void
   selectedItem: AssetInput | null
   setSelectedItem: (item: AssetInput) => void
   movingNode:
@@ -264,6 +310,8 @@ type EditorState = {
   setActivePaintMaterial: (material: ActivePaintMaterial | null) => void
   activePaintTarget: PaintableMaterialTarget
   setActivePaintTarget: (target: PaintableMaterialTarget) => void
+  paintEraser: boolean
+  setPaintEraser: (eraser: boolean) => void
   primeMaterialPaintFromSelection: () => MaterialPaintSelectionSnapshot
   hoveredPaintTarget: PaintableMaterialTarget | null
   setHoveredPaintTarget: (target: PaintableMaterialTarget | null) => void
@@ -657,6 +705,8 @@ const useEditor = create<EditorState>()(
       },
       catalogCategory: DEFAULT_PERSISTED_EDITOR_UI_STATE.catalogCategory,
       setCatalogCategory: (category) => set({ catalogCategory: category }),
+      pendingImportPlacement: null,
+      setPendingImportPlacement: (placement) => set({ pendingImportPlacement: placement }),
       selectedItem: null,
       setSelectedItem: (item) => set({ selectedItem: item }),
       movingNode: null as
@@ -701,12 +751,15 @@ const useEditor = create<EditorState>()(
       selectedMaterialTarget: null,
       setSelectedMaterialTarget: (target) => set({ selectedMaterialTarget: target }),
       activePaintMaterial: null,
-      setActivePaintMaterial: (material) => set({ activePaintMaterial: material }),
+      setActivePaintMaterial: (material) =>
+        set({ activePaintMaterial: material, paintEraser: false }),
       activePaintTarget: 'wall',
       setActivePaintTarget: (target) =>
         set((state) =>
           state.activePaintTarget === target ? state : { activePaintTarget: target },
         ),
+      paintEraser: false,
+      setPaintEraser: (eraser) => set({ paintEraser: eraser }),
       primeMaterialPaintFromSelection: () => {
         const selectedId =
           useViewer.getState().selection.selectedIds.length === 1

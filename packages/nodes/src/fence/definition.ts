@@ -4,7 +4,9 @@ import { fenceCurveAffordance, fenceMoveEndpointAffordance } from './floorplan-a
 import { fenceFloorplanMoveTarget } from './floorplan-move'
 import { buildFenceGeometry } from './geometry'
 import { fenceParametrics } from './parametrics'
+import { fencePaint } from './paint'
 import { FenceNode } from './schema'
+import { fenceSlots } from './slots'
 
 const SIDE_HANDLE_OFFSET = 0.27
 const SIDE_HANDLE_MIN_OFFSET = 0.33
@@ -160,6 +162,8 @@ export const fenceDefinition: NodeDefinition<typeof FenceNode> = {
     surfaces: { sides: { faces: 'all' } },
     duplicable: true,
     deletable: true,
+    paint: fencePaint,
+    slots: (node) => fenceSlots(node as FenceNodeType),
     // Placed by drawing the span with the two-click tool; a saved preset
     // seeds its build parameters via `toolDefaults.fence` (see `tool.tsx`
     // and `createFenceOnCurrentLevel`).

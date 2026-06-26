@@ -11,6 +11,8 @@ import useEditor, {
 export type SceneGraph = {
   nodes: Record<string, unknown>
   rootNodeIds: string[]
+  collections?: Record<string, unknown>
+  materials?: Record<string, unknown>
 }
 
 type PersistedSelectionPath = {
@@ -369,8 +371,11 @@ function hasUsableSceneGraph(sceneGraph?: SceneGraph | null): sceneGraph is Scen
 
 export function applySceneGraphToEditor(sceneGraph?: SceneGraph | null) {
   if (hasUsableSceneGraph(sceneGraph)) {
-    const { nodes, rootNodeIds } = sceneGraph
-    useScene.getState().setScene(nodes as any, rootNodeIds as any)
+    const { nodes, rootNodeIds, collections, materials } = sceneGraph
+    useScene.getState().setScene(nodes as any, rootNodeIds as any, {
+      collections: collections as any,
+      materials: materials as any,
+    })
   } else {
     useScene.getState().clearScene()
   }

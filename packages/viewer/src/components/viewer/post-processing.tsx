@@ -124,8 +124,10 @@ function sanitizeOutlineObjects(objects: Object3D[]) {
 
 const PostProcessingPasses = ({
   hoverStyles = DEFAULT_HOVER_STYLES,
+  perf = false,
 }: {
   hoverStyles?: HoverStyles
+  perf?: boolean
 }) => {
   const { gl: renderer, invalidate, scene, camera, size } = useThree()
   const renderPipelineRef = useRef<RenderPipeline | null>(null)
@@ -173,6 +175,7 @@ const PostProcessingPasses = ({
   const hoverHighlightMode = useViewer((s) => s.hoverHighlightMode)
   const hoverVisibleColor = useMemo(() => uniform(new Color(DEFAULT_HOVER_STYLE.visibleColor)), [])
   const hoverHiddenColor = useMemo(() => uniform(new Color(DEFAULT_HOVER_STYLE.hiddenColor)), [])
+  const perfOverlayEnabled = perf || PERF_OVERLAY_ENABLED
   const hoverStrength = useMemo(() => uniform(DEFAULT_HOVER_STYLE.strength), [])
   const hoverPulseMix = useMemo(() => uniform(DEFAULT_HOVER_STYLE.pulse ? 0 : 1), [])
 
@@ -527,9 +530,9 @@ const PostProcessingPasses = ({
         if ((renderer as any).setClearAlpha) {
           ;(renderer as any).setClearAlpha(1)
         }
-        const submittedAt = PERF_OVERLAY_ENABLED ? performance.now() : 0
+        const submittedAt = perfOverlayEnabled ? performance.now() : 0
         ;(renderer as any).render(scene, camera)
-        if (PERF_OVERLAY_ENABLED) {
+        if (perfOverlayEnabled) {
           const queue = (renderer as any).backend?.device?.queue as
             | { onSubmittedWorkDone?: () => Promise<void> }
             | undefined
@@ -547,9 +550,9 @@ const PostProcessingPasses = ({
       // Clear alpha=0 so background pixels in the output MRT attachment (index 0) get a=0,
       // making scenePassColor.a a reliable geometry mask (geometry pixels write a=1 via output node).
       ;(renderer as any).setClearAlpha(0)
-      const submittedAt = PERF_OVERLAY_ENABLED ? performance.now() : 0
+      const submittedAt = perfOverlayEnabled ? performance.now() : 0
       renderPipelineRef.current.render()
-      if (PERF_OVERLAY_ENABLED) {
+      if (perfOverlayEnabled) {
         // device.queue.onSubmittedWorkDone() resolves once the GPU has
         // finished the work we just submitted — the delta from our submit
         // timestamp is a clean per-frame GPU duration. Doesn't block CPU

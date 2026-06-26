@@ -107,6 +107,7 @@ const assetSchema = z.object({
   offset: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
   rotation: z.tuple([z.number(), z.number(), z.number()]).default([0, 0, 0]),
   scale: z.tuple([z.number(), z.number(), z.number()]).default([1, 1, 1]),
+  fitToDimensions: z.boolean().default(false),
   surface: z
     .object({
       height: z.number(), // where things rest
@@ -134,6 +135,10 @@ export const ItemNode = BaseNode.extend({
   // Denormalized references to collections this node belongs to
   collectionIds: z.array(z.custom<CollectionId>()).optional(),
 
+  // Per-slot material overrides. Key = slot id derived from GLB material names
+  // like `slot_frame`; value = MaterialRef (`library:<id>` or `scene:<id>`).
+  slots: z.record(z.string(), z.string()).optional(),
+
   asset: assetSchema,
 }).describe(dedent`Item node - used to represent a item in the building
   - position: position in level coordinate system (or parent coordinate system if attached)
@@ -146,6 +151,7 @@ export const ItemNode = BaseNode.extend({
     - offset: corrective position offset for the model
     - rotation: corrective rotation for the model
     - scale: corrective scale for the model
+    - fitToDimensions: when true, auto-fit the rendered GLB inside dimensions
     - tags: tags associated with the item
 `)
 

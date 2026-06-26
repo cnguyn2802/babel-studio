@@ -47,6 +47,8 @@ export const WallCutout = () => {
   const lastTextures = useRef(useViewer.getState().textures)
   const lastColorPreset = useRef(useViewer.getState().colorPreset)
   const lastSceneTheme = useRef(useViewer.getState().sceneTheme)
+  const lastSceneMaterials = useRef(useScene.getState().materials)
+  const sceneMaterials = useScene((state) => state.materials)
 
   useFrame(({ camera, clock }) => {
     const wallMode = useViewer.getState().wallMode
@@ -86,6 +88,7 @@ export const WallCutout = () => {
       lastTextures.current !== textures ||
       lastColorPreset.current !== colorPreset ||
       lastSceneTheme.current !== sceneTheme ||
+      lastSceneMaterials.current !== sceneMaterials ||
       sceneRegistry.byType.wall!.size !== lastNumberOfWalls.current ||
       lastHighlightKey.current !== highlightKey
     ) {
@@ -104,7 +107,14 @@ export const WallCutout = () => {
         const hideWall = getWallHideState(wallNode, wallMesh as Mesh, wallMode, u)
         const isDeleteHighlighted = deleteHoveredWallId === wallId
         const isSelectionHighlighted = !isDeleteHighlighted && highlightedWallIds.has(wallId)
-        const materials = getMaterialsForWall(wallNode, shading, textures, colorPreset, sceneTheme)
+        const materials = getMaterialsForWall(
+          wallNode,
+          shading,
+          textures,
+          colorPreset,
+          sceneTheme,
+          sceneMaterials,
+        )
 
         if (hideWall) {
           ;(wallMesh as Mesh).material = isDeleteHighlighted
@@ -125,6 +135,7 @@ export const WallCutout = () => {
       lastTextures.current = textures
       lastColorPreset.current = colorPreset
       lastSceneTheme.current = sceneTheme
+      lastSceneMaterials.current = sceneMaterials
       lastNumberOfWalls.current = sceneRegistry.byType.wall!.size
       lastHighlightKey.current = highlightKey
     }
@@ -145,6 +156,7 @@ export const WallCutout = () => {
           useViewer.getState().textures,
           useViewer.getState().colorPreset,
           useViewer.getState().sceneTheme,
+          useScene.getState().materials,
         )
         const current = wallMesh.material as Material | Material[]
         snapshot.set(wallMesh, current)

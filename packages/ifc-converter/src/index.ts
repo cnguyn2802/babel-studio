@@ -35,14 +35,702 @@ type ConverterMetadata = {
   globalId?: string
   levelId?: string
   material?: string
-  materialLayers?: { name: string; thickness?: number }[]
+  materialLayers?: IfcMaterialLayer[]
+  presentationStyle?: IfcPresentationStyleInfo
   typeName?: string
   properties?: Record<string, Record<string, unknown>>
   [key: string]: unknown
 }
 
+type PascalMaterialPreset =
+  | 'white'
+  | 'brick'
+  | 'concrete'
+  | 'wood'
+  | 'glass'
+  | 'metal'
+  | 'plaster'
+  | 'tile'
+  | 'marble'
+  | 'custom'
+
+type PascalMaterial = {
+  preset?: PascalMaterialPreset
+  properties?: {
+    color?: string
+    roughness?: number
+    metalness?: number
+    opacity?: number
+    transparent?: boolean
+    side?: 'front' | 'back' | 'double'
+  }
+}
+
+type IfcPresentationStyleInfo = {
+  name?: string
+  color?: string
+  opacity?: number
+  transparency?: number
+  roughness?: number
+  metalness?: number
+  specularIntensity?: number
+  specularExponent?: number
+  reflectanceMethod?: string
+  preset?: PascalMaterialPreset
+}
+
+type IfcMaterialLayer = {
+  name: string
+  thickness?: number
+  presentationStyle?: IfcPresentationStyleInfo
+}
+
+type IfcMaterialAssignment = {
+  material: PascalMaterial
+  materialPreset?: string
+}
+
 function meta(node: { metadata?: unknown } | null | undefined): ConverterMetadata {
   return (node?.metadata ?? {}) as ConverterMetadata
+}
+
+function libraryMaterialRef(id: string): string {
+  return `library:${id}`
+}
+
+function normalizeMaterialText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[_:;/\\()[\]{}|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isUsableMaterialText(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const normalized = normalizeMaterialText(value)
+  return (
+    normalized.length > 0 &&
+    normalized !== 'unknown' &&
+    normalized !== 'undefined' &&
+    normalized !== 'null'
+  )
+}
+
+function inferLibraryMaterialRef(materialText: string, nodeType: string): string | undefined {
+  const isRoof =
+    nodeType === 'roof' ||
+    nodeType === 'roof-segment' ||
+    /\b(roof|tak|shingle|shingles|tiles?|terracotta)\b/.test(materialText)
+
+  if (isRoof) {
+    if (/\b(weathered|aged)\b/.test(materialText) && /\b(shingle|roof)\b/.test(materialText)) {
+      return libraryMaterialRef('roof-weatheredshingles')
+    }
+    if (/\b(shingle|shingles|asphalt)\b/.test(materialText)) {
+      return libraryMaterialRef('roof-classicshingles')
+    }
+    if (/\b(terracotta|terra cotta|clay|orange|red|rod|takpann|tegeltak|roof tile)\b/.test(
+      materialText,
+    )) {
+      return libraryMaterialRef('roof-terracottatiles')
+    }
+    if (/\b(tile|tiles|ceramic)\b/.test(materialText)) {
+      return libraryMaterialRef('roof-claytiles')
+    }
+  }
+
+  if (/\b(parquet|floor plank|plank floor|wood floor|hardwood)\b/.test(materialText)) {
+    return libraryMaterialRef('wood-floorplank1')
+  }
+  if (/\b(brick|tegel)\b/.test(materialText)) {
+    return libraryMaterialRef('flooring-rusticbrick')
+  }
+  if (/\b(stone|granite|wall stone)\b/.test(materialText)) {
+    return libraryMaterialRef('flooring-wallstone1')
+  }
+  if (/\b(ceramic|kakel|tile|tiles)\b/.test(materialText)) {
+    return libraryMaterialRef('flooring-tile86')
+  }
+  if (/\b(wood|timber|oak|pine|cedar|birch|tra)\b/.test(materialText)) {
+    return libraryMaterialRef('wood-finewood27')
+  }
+
+  return undefined
+}
+
+function inferSchemaMaterialPreset(materialText: string): PascalMaterialPreset {
+  if (/\b(glass|glazing|glas)\b/.test(materialText)) return 'glass'
+  if (/\b(steel|metal|aluminium|aluminum|zinc|iron|plat|plattak|sheet metal)\b/.test(materialText)) {
+    return 'metal'
+  }
+  if (/\b(concrete|cement|betong)\b/.test(materialText)) return 'concrete'
+  if (/\b(plaster|stucco|gypsum|gips|render)\b/.test(materialText)) return 'plaster'
+  if (/\b(brick|tegel)\b/.test(materialText)) return 'brick'
+  if (/\b(marble)\b/.test(materialText)) return 'marble'
+  if (/\b(ceramic|kakel|tile|tiles|terracotta|clay)\b/.test(materialText)) return 'tile'
+  if (/\b(wood|timber|oak|pine|cedar|birch|tra)\b/.test(materialText)) return 'wood'
+  return 'custom'
+}
+
+function inferMaterialColor(materialText: string, preset: PascalMaterialPreset): string | undefined {
+  if (/\b(black|svart|dark|charcoal)\b/.test(materialText)) return '#111827'
+  if (/\b(white|vit)\b/.test(materialText)) return '#f8fafc'
+  if (/\b(grey|gray|gra|silver)\b/.test(materialText)) return '#9ca3af'
+  if (/\b(red|rod|terracotta)\b/.test(materialText)) return '#c65f22'
+  if (/\b(orange)\b/.test(materialText)) return '#d85b16'
+  if (/\b(yellow|gul)\b/.test(materialText)) return '#d6a64a'
+  if (/\b(green|gron)\b/.test(materialText)) return '#2f7d32'
+  if (/\b(blue|bla)\b/.test(materialText)) return '#3b82f6'
+  if (/\b(brown|brun)\b/.test(materialText)) return '#8b5a2b'
+  if (/\b(beige)\b/.test(materialText)) return '#d9c7ad'
+
+  switch (preset) {
+    case 'glass':
+      return '#d7eef7'
+    case 'metal':
+      return '#9ca3af'
+    case 'concrete':
+      return '#9ca3af'
+    case 'plaster':
+      return '#f2f0ed'
+    case 'brick':
+      return '#8b4513'
+    case 'wood':
+      return '#b67a3f'
+    case 'tile':
+      return '#d3d3d3'
+    case 'marble':
+      return '#fafafa'
+    default:
+      return undefined
+  }
+}
+
+function buildFallbackMaterial(materialText: string): PascalMaterial {
+  const preset = inferSchemaMaterialPreset(materialText)
+  const color = inferMaterialColor(materialText, preset)
+  const transparent = preset === 'glass'
+
+  return {
+    preset,
+    properties: buildMetadata({
+      color,
+      roughness:
+        preset === 'metal' ? 0.35 : preset === 'glass' ? 0.1 : preset === 'marble' ? 0.25 : 0.82,
+      metalness: preset === 'metal' ? 0.75 : preset === 'glass' ? 0.05 : 0,
+      opacity: transparent ? 0.35 : 1,
+      transparent,
+      side: transparent ? 'double' : 'front',
+    }) as PascalMaterial['properties'],
+  }
+}
+
+function inferAssignmentFromMaterialText(
+  materialText: string,
+  nodeType: string,
+): IfcMaterialAssignment | null {
+  const libraryRef = inferLibraryMaterialRef(materialText, nodeType)
+  const schemaPreset = inferSchemaMaterialPreset(materialText)
+  const color = inferMaterialColor(materialText, schemaPreset)
+
+  if (!libraryRef && schemaPreset === 'custom' && !color) return null
+
+  return {
+    material: buildFallbackMaterial(materialText),
+    materialPreset: libraryRef,
+  }
+}
+
+function isIfcPresentationStyleInfo(value: unknown): value is IfcPresentationStyleInfo {
+  if (!value || typeof value !== 'object') return false
+  const style = value as IfcPresentationStyleInfo
+  return (
+    typeof style.color === 'string' ||
+    typeof style.opacity === 'number' ||
+    typeof style.roughness === 'number' ||
+    typeof style.metalness === 'number' ||
+    isUsableMaterialText(style.name)
+  )
+}
+
+function inferMaterialFromPresentationStyle(style: IfcPresentationStyleInfo): PascalMaterial | null {
+  const text = isUsableMaterialText(style.name) ? normalizeMaterialText(style.name) : ''
+  const preset = style.preset ?? (text ? inferSchemaMaterialPreset(text) : 'custom')
+  const fallbackColor = text ? inferMaterialColor(text, preset) : undefined
+  const color = style.color ?? fallbackColor
+
+  if (
+    !color &&
+    style.opacity === undefined &&
+    style.roughness === undefined &&
+    style.metalness === undefined
+  ) {
+    return null
+  }
+
+  const opacity = style.opacity ?? (preset === 'glass' ? 0.35 : 1)
+  const transparent = opacity < 0.999 || preset === 'glass'
+
+  return {
+    preset,
+    properties: buildMetadata({
+      color,
+      roughness:
+        style.roughness ??
+        (preset === 'metal' ? 0.35 : preset === 'glass' ? 0.1 : preset === 'marble' ? 0.25 : 0.82),
+      metalness:
+        style.metalness ?? (preset === 'metal' ? 0.75 : preset === 'glass' ? 0.05 : 0),
+      opacity,
+      transparent,
+      side: transparent ? 'double' : 'front',
+    }) as PascalMaterial['properties'],
+  }
+}
+
+function inferAssignmentFromPresentationStyle(
+  style: IfcPresentationStyleInfo | undefined,
+): IfcMaterialAssignment | null {
+  if (!isIfcPresentationStyleInfo(style)) return null
+  const material = inferMaterialFromPresentationStyle(style)
+  return material ? { material } : null
+}
+
+function isStructuralLayerText(value: string): boolean {
+  return /\b(air|cavity|damp|insulation|insul|membrane|proof|retarder|stud|vapor|vapour|void)\b/.test(
+    normalizeMaterialText(value),
+  )
+}
+
+function getSurfaceLayerTexts(nodeType: string, layers: IfcMaterialLayer[]): string[] {
+  const layerNames = layers.map((layer) => layer.name).filter(isUsableMaterialText)
+  if (layerNames.length === 0) return []
+
+  if (nodeType === 'wall') {
+    const edgeLayers = [layerNames[0], layerNames[layerNames.length - 1]]
+      .filter((name): name is string => Boolean(name))
+      .filter((name) => !isStructuralLayerText(name))
+    if (edgeLayers.length > 0) return edgeLayers
+  }
+
+  const firstFinish = layerNames.find((name) => !isStructuralLayerText(name))
+  return firstFinish ? [firstFinish] : []
+}
+
+function getSurfaceLayerStyles(
+  nodeType: string,
+  layers: IfcMaterialLayer[],
+): IfcPresentationStyleInfo[] {
+  const styledLayers = layers.filter((layer) => isIfcPresentationStyleInfo(layer.presentationStyle))
+  if (styledLayers.length === 0) return []
+
+  if (nodeType === 'wall') {
+    const edgeLayers = [styledLayers[0], styledLayers[styledLayers.length - 1]].filter(
+      (layer): layer is IfcMaterialLayer =>
+        Boolean(layer) && !isStructuralLayerText(layer.name) && Boolean(layer.presentationStyle),
+    )
+    if (edgeLayers.length > 0) {
+      return edgeLayers
+        .map((layer) => layer.presentationStyle)
+        .filter(isIfcPresentationStyleInfo)
+    }
+  }
+
+  const firstFinish = styledLayers.find((layer) => !isStructuralLayerText(layer.name))
+  return firstFinish?.presentationStyle ? [firstFinish.presentationStyle] : []
+}
+
+function inferIfcMaterialAssignment(node: PascalNode): IfcMaterialAssignment | null {
+  const m = meta(node)
+  const styleCandidates = [
+    m.presentationStyle,
+    ...getSurfaceLayerStyles(node.type, m.materialLayers ?? []),
+  ].filter(isIfcPresentationStyleInfo)
+
+  for (const style of styleCandidates) {
+    const assignment = inferAssignmentFromPresentationStyle(style)
+    if (assignment) return assignment
+  }
+
+  const candidates = [
+    ...getSurfaceLayerTexts(node.type, m.materialLayers ?? []),
+    m.material,
+    m.typeName,
+    node.name,
+  ].filter(isUsableMaterialText)
+
+  for (const candidate of candidates) {
+    const assignment = inferAssignmentFromMaterialText(normalizeMaterialText(candidate), node.type)
+    if (assignment) return assignment
+  }
+
+  return null
+}
+
+function getIfcRefId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (value && typeof value === 'object') {
+    const raw = value as { type?: unknown; value?: unknown }
+    if (raw.type !== undefined && raw.type !== 5) return null
+    const refValue = raw.value
+    if (typeof refValue === 'number' && Number.isFinite(refValue)) return refValue
+  }
+  return null
+}
+
+function getIfcStringValue(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object') {
+    const refValue = (value as { value?: unknown }).value
+    if (typeof refValue === 'string') return refValue
+  }
+  return undefined
+}
+
+function getIfcNumberValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  if (value && typeof value === 'object') {
+    const raw = value as {
+      value?: unknown
+      _representationValue?: unknown
+      _internalValue?: unknown
+    }
+    if (typeof raw.value === 'number' && Number.isFinite(raw.value)) return raw.value
+    if (
+      typeof raw._representationValue === 'number' &&
+      Number.isFinite(raw._representationValue)
+    ) {
+      return raw._representationValue
+    }
+    if (typeof raw._internalValue === 'string') {
+      const parsed = Number(raw._internalValue)
+      return Number.isFinite(parsed) ? parsed : undefined
+    }
+  }
+  return undefined
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function numberToHexChannel(value: number): string {
+  return Math.round(clamp01(value) * 255)
+    .toString(16)
+    .padStart(2, '0')
+}
+
+function rgbToHex(red: number, green: number, blue: number): string {
+  return `#${numberToHexChannel(red)}${numberToHexChannel(green)}${numberToHexChannel(blue)}`
+}
+
+function readIfcColor(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  value: unknown,
+): { hex: string; intensity: number } | null {
+  let color = value
+  const refId = getIfcRefId(value)
+  if (refId != null) {
+    try {
+      color = ifcApi.GetLine(modelID, refId)
+    } catch {
+      return null
+    }
+  }
+
+  if (color && typeof color === 'object') {
+    const c = color as { Red?: unknown; Green?: unknown; Blue?: unknown }
+    const red = getIfcNumberValue(c.Red)
+    const green = getIfcNumberValue(c.Green)
+    const blue = getIfcNumberValue(c.Blue)
+    if (red !== undefined && green !== undefined && blue !== undefined) {
+      return {
+        hex: rgbToHex(red, green, blue),
+        intensity: clamp01((red + green + blue) / 3),
+      }
+    }
+  }
+
+  const ratio = getIfcNumberValue(color)
+  return ratio !== undefined ? { hex: rgbToHex(ratio, ratio, ratio), intensity: clamp01(ratio) } : null
+}
+
+function roughnessFromSpecularHighlight(value: unknown): number | undefined {
+  const highlight = getIfcNumberValue(value)
+  if (highlight === undefined) return undefined
+  if (highlight <= 1) return Math.max(0.05, Math.min(1, highlight))
+  const gloss = Math.min(1, Math.log2(highlight + 1) / 8)
+  return Math.max(0.08, Math.min(0.9, 1 - gloss))
+}
+
+function buildIfcPresentationStyleInfo(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  rendering: Record<string, unknown>,
+  styleName?: string,
+): IfcPresentationStyleInfo | null {
+  const text = isUsableMaterialText(styleName) ? normalizeMaterialText(styleName) : ''
+  const preset = text ? inferSchemaMaterialPreset(text) : undefined
+  const color =
+    readIfcColor(ifcApi, modelID, rendering.SurfaceColour)?.hex ??
+    readIfcColor(ifcApi, modelID, rendering.DiffuseColour)?.hex
+  const transparency = getIfcNumberValue(rendering.Transparency)
+  const opacity = transparency === undefined ? undefined : 1 - clamp01(transparency)
+  const specular = readIfcColor(ifcApi, modelID, rendering.SpecularColour)
+  const specularExponent = getIfcNumberValue(rendering.SpecularHighlight)
+  const reflectanceMethod = getIfcStringValue(rendering.ReflectanceMethod)
+  const rawRoughness = roughnessFromSpecularHighlight(rendering.SpecularHighlight)
+  const roughness =
+    rawRoughness === undefined || preset === 'metal' || preset === 'glass' || preset === 'marble'
+      ? rawRoughness
+      : Math.max(rawRoughness, 0.45)
+  const metalness =
+    preset === 'metal' || reflectanceMethod === 'METAL'
+      ? 0.75
+      : preset === 'glass'
+        ? 0.05
+        : specular && specular.intensity > 0.75
+          ? 0.15
+          : undefined
+
+  if (
+    !color &&
+    opacity === undefined &&
+    roughness === undefined &&
+    metalness === undefined &&
+    !isUsableMaterialText(styleName)
+  ) {
+    return null
+  }
+
+  return buildMetadata({
+    name: styleName,
+    color,
+    opacity,
+    transparency,
+    roughness,
+    metalness,
+    specularIntensity: specular?.intensity,
+    specularExponent,
+    reflectanceMethod,
+    preset,
+  }) as IfcPresentationStyleInfo
+}
+
+function resolveIfcPresentationStyle(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  value: unknown,
+  inheritedName?: string,
+  seen = new Set<number>(),
+): IfcPresentationStyleInfo | null {
+  const refId = getIfcRefId(value)
+  let line: Record<string, unknown> | null = null
+
+  if (refId != null) {
+    if (seen.has(refId)) return null
+    seen.add(refId)
+    try {
+      line = ifcApi.GetLine(modelID, refId) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  } else if (value && typeof value === 'object') {
+    line = value as Record<string, unknown>
+  }
+
+  if (!line) return null
+
+  const ownName = getIfcStringValue(line.Name) ?? inheritedName
+  if ('SurfaceColour' in line || 'DiffuseColour' in line || 'Transparency' in line) {
+    return buildIfcPresentationStyleInfo(ifcApi, modelID, line, ownName)
+  }
+
+  for (const key of ['Styles', 'Items', 'Representations'] as const) {
+    const children = line[key]
+    if (!Array.isArray(children)) continue
+    for (const child of children) {
+      const style = resolveIfcPresentationStyle(ifcApi, modelID, child, ownName, seen)
+      if (style) return style
+    }
+  }
+
+  return null
+}
+
+function collectRepresentationItemIds(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  representationId: number,
+  itemIds: Set<number>,
+  seenRepresentations = new Set<number>(),
+): void {
+  if (seenRepresentations.has(representationId)) return
+  seenRepresentations.add(representationId)
+
+  let representation: { Items?: { value?: number }[] }
+  try {
+    representation = ifcApi.GetLine(modelID, representationId)
+  } catch {
+    return
+  }
+
+  for (const itemRef of representation.Items ?? []) {
+    const itemId = getIfcRefId(itemRef)
+    if (itemId == null) continue
+    itemIds.add(itemId)
+
+    try {
+      const item = ifcApi.GetLine(modelID, itemId)
+      const mappingSourceId = getIfcRefId(item.MappingSource)
+      if (!mappingSourceId) continue
+      const mappingSource = ifcApi.GetLine(modelID, mappingSourceId)
+      const mappedRepresentationId = getIfcRefId(mappingSource.MappedRepresentation)
+      if (mappedRepresentationId != null) {
+        collectRepresentationItemIds(
+          ifcApi,
+          modelID,
+          mappedRepresentationId,
+          itemIds,
+          seenRepresentations,
+        )
+      }
+    } catch {
+      /* mapped representations are optional */
+    }
+  }
+}
+
+function collectProductRepresentationItemIds(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  product: Record<string, unknown>,
+): Set<number> {
+  const itemIds = new Set<number>()
+  const productRepresentationId = getIfcRefId(product.Representation)
+  if (productRepresentationId == null) return itemIds
+
+  try {
+    const productRepresentation = ifcApi.GetLine(modelID, productRepresentationId)
+    for (const representationRef of productRepresentation.Representations ?? []) {
+      const representationId = getIfcRefId(representationRef)
+      if (representationId != null) {
+        collectRepresentationItemIds(ifcApi, modelID, representationId, itemIds)
+      }
+    }
+  } catch {
+    /* product has no readable representation */
+  }
+
+  return itemIds
+}
+
+function collectProductPresentationStyles(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+  elementExpressIds: Set<number>,
+): Map<number, IfcPresentationStyleInfo> {
+  const itemToProductIds = new Map<number, number[]>()
+  for (const expressId of elementExpressIds) {
+    try {
+      const product = ifcApi.GetLine(modelID, expressId)
+      for (const itemId of collectProductRepresentationItemIds(ifcApi, modelID, product)) {
+        const productIds = itemToProductIds.get(itemId) ?? []
+        productIds.push(expressId)
+        itemToProductIds.set(itemId, productIds)
+      }
+    } catch {
+      /* skip unreadable product */
+    }
+  }
+
+  const result = new Map<number, IfcPresentationStyleInfo>()
+  try {
+    const styledItems = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCSTYLEDITEM)
+    for (let i = 0; i < styledItems.size(); i++) {
+      try {
+        const styledItem = ifcApi.GetLine(modelID, styledItems.get(i))
+        const itemId = getIfcRefId(styledItem.Item)
+        if (itemId == null) continue
+        const productIds = itemToProductIds.get(itemId)
+        if (!productIds || productIds.length === 0) continue
+        const style = resolveIfcPresentationStyle(ifcApi, modelID, styledItem)
+        if (!style) continue
+        for (const productId of productIds) {
+          if (!result.has(productId)) result.set(productId, style)
+        }
+      } catch {
+        /* skip styled item */
+      }
+    }
+  } catch {
+    /* no styled items */
+  }
+  return result
+}
+
+function collectMaterialPresentationStyles(
+  ifcApi: WebIFC.IfcAPI,
+  modelID: number,
+): Map<number, IfcPresentationStyleInfo> {
+  const result = new Map<number, IfcPresentationStyleInfo>()
+  try {
+    const materialReps = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCMATERIALDEFINITIONREPRESENTATION)
+    for (let i = 0; i < materialReps.size(); i++) {
+      try {
+        const materialRep = ifcApi.GetLine(modelID, materialReps.get(i))
+        const materialId = getIfcRefId(materialRep.RepresentedMaterial)
+        if (materialId == null) continue
+        const style = resolveIfcPresentationStyle(ifcApi, modelID, materialRep)
+        if (style && !result.has(materialId)) result.set(materialId, style)
+      } catch {
+        /* skip material representation */
+      }
+    }
+  } catch {
+    /* no material definition representations */
+  }
+  return result
+}
+
+function applyIfcMaterialToNode(node: PascalNode, assignment: IfcMaterialAssignment): boolean {
+  const target = node as PascalNode & Record<string, unknown>
+
+  const applyCatchAll = () => {
+    if (assignment.materialPreset) target.materialPreset = assignment.materialPreset
+    else target.material = assignment.material
+  }
+
+  switch (node.type) {
+    case 'wall':
+    case 'slab':
+    case 'stair':
+    case 'column':
+      applyCatchAll()
+      return true
+    case 'roof':
+      if (assignment.materialPreset) {
+        target.topMaterialPreset = assignment.materialPreset
+        target.edgeMaterialPreset = assignment.materialPreset
+      } else {
+        target.topMaterial = assignment.material
+        target.edgeMaterial = assignment.material
+      }
+      return true
+    case 'door':
+    case 'window':
+      target.material = assignment.material
+      return true
+    default:
+      return false
+  }
 }
 
 // Pascal's `BaseNode.metadata` is `z.json()` — a recursive JSON value
@@ -1908,6 +2596,22 @@ export async function convertIfcToPascal(
     }
   }
 
+  const productPresentationStyles = collectProductPresentationStyles(ifcApi, modelID, elementExpressIds)
+  let productPresentationStyleCount = 0
+  for (const [expressId, style] of productPresentationStyles) {
+    const node = expressIdToNode.get(expressId)
+    if (!node) continue
+    meta(node).presentationStyle = style
+    productPresentationStyleCount++
+  }
+
+  const materialPresentationStyles = collectMaterialPresentationStyles(ifcApi, modelID)
+  if (productPresentationStyleCount > 0 || materialPresentationStyles.size > 0) {
+    console.log(
+      `[IFC→Pascal] Found ${productPresentationStyleCount} product presentation styles and ${materialPresentationStyles.size} material presentation styles`,
+    )
+  }
+
   // Property sets via IFCRELDEFINESBYPROPERTIES
   try {
     const relDefines = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES)
@@ -1976,22 +2680,27 @@ export async function convertIfcToPascal(
         const mat = ifcApi.GetLine(modelID, rel.RelatingMaterial.value)
 
         let materialName: string | null = null
-        const layers: { name: string; thickness?: number }[] = []
+        const layers: IfcMaterialLayer[] = []
+        let presentationStyle: IfcPresentationStyleInfo | undefined
 
         const extractLayers = (layersArr: any[]) => {
           for (const lRef of layersArr) {
             try {
               const layer = ifcApi.GetLine(modelID, lRef.value)
-              const layerMat = layer.Material?.value
-                ? ifcApi.GetLine(modelID, layer.Material.value)
-                : null
-              layers.push({
+              const layerMatId = getIfcRefId(layer.Material)
+              const layerMat = layerMatId ? ifcApi.GetLine(modelID, layerMatId) : null
+              const thickness =
+                layer.LayerThickness?.value != null
+                  ? layer.LayerThickness.value * unitFactor
+                  : undefined
+              const materialLayer: IfcMaterialLayer = {
                 name: layerMat?.Name?.value ?? 'Unknown',
-                thickness:
-                  layer.LayerThickness?.value != null
-                    ? layer.LayerThickness.value * unitFactor
-                    : undefined,
-              })
+              }
+              if (thickness !== undefined) materialLayer.thickness = thickness
+              const layerStyle =
+                layerMatId != null ? materialPresentationStyles.get(layerMatId) : undefined
+              if (layerStyle) materialLayer.presentationStyle = layerStyle
+              layers.push(materialLayer)
             } catch {
               /* skip */
             }
@@ -2007,9 +2716,10 @@ export async function convertIfcToPascal(
           extractLayers(mat.MaterialLayers)
         } else if (mat.Name?.value) {
           materialName = mat.Name.value
+          presentationStyle = materialPresentationStyles.get(rel.RelatingMaterial.value)
         }
 
-        if (!materialName && layers.length === 0) continue
+        if (!materialName && layers.length === 0 && !presentationStyle) continue
 
         for (const objRef of rel.RelatedObjects) {
           const node = expressIdToNode.get(objRef.value)
@@ -2017,6 +2727,7 @@ export async function convertIfcToPascal(
           const m = meta(node)
           if (materialName) m.material = materialName
           if (layers.length > 0) m.materialLayers = layers
+          if (presentationStyle && !m.presentationStyle) m.presentationStyle = presentationStyle
         }
       } catch {
         /* skip rel */
@@ -2047,6 +2758,16 @@ export async function convertIfcToPascal(
     }
   } catch {
     /* no type rels */
+  }
+
+  let appliedMaterialCount = 0
+  for (const node of Object.values(nodes)) {
+    const assignment = inferIfcMaterialAssignment(node)
+    if (!assignment) continue
+    if (applyIfcMaterialToNode(node, assignment)) appliedMaterialCount++
+  }
+  if (appliedMaterialCount > 0) {
+    console.log(`[IFC→Pascal] Applied IFC material mapping to ${appliedMaterialCount} nodes`)
   }
 
   ifcApi.CloseModel(modelID)

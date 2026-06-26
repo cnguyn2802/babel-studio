@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import type { BufferGeometry, Object3D } from 'three'
 import type { ZodObject, z } from 'zod'
 import type { MaterialSchema } from '../schema/material'
+import type { SceneMaterial, SceneMaterialId } from '../schema/scene-material'
 import type { AnyNode, AnyNodeId } from '../schema/types'
 import type { HandleList } from './handles'
 import type { CloneNodesIntoOptions, Subtree } from './subtree'
@@ -43,6 +44,7 @@ export type GeometryContext = {
    * has cheap access to siblings through `ctx.siblings`).
    */
   levelData?: unknown
+  materials?: Record<SceneMaterialId, SceneMaterial>
   /**
    * Optional view state — only populated for `def.floorplan` builders. The
    * 2D floor-plan layer surfaces selection / hover here so kinds can vary
@@ -950,6 +952,7 @@ export type Capabilities = {
   interactive?: boolean
   floorPlaced?: FloorPlacedConfig
   roofAccessory?: RoofAccessoryConfig
+  slots?: (node: AnyNode) => SlotDeclaration[]
   paint?: PaintCapability
   /**
    * Kind is placed by clicking on a wall (door, window). When set, the
@@ -1024,6 +1027,12 @@ export type Capabilities = {
   drawTool?: boolean
 }
 
+export type SlotDeclaration = {
+  slotId: string
+  label: string
+  default: string
+}
+
 /**
  * Per-kind paint behaviour. Lets the editor's selection-manager
  * route paint hover / click / preview through a generic dispatcher
@@ -1054,6 +1063,11 @@ export type PaintCapability = {
    * `role`. Returned partial is merged into the node by the editor.
    */
   buildPatch: (args: PaintPatchArgs) => Partial<AnyNode>
+  /**
+   * Optional atomic commit for paintable kinds that need side effects, such as
+   * creating a scene material before storing a slot reference.
+   */
+  commit?: (args: PaintPatchArgs) => void
   /**
    * Apply a preview to the kind's registered mesh subtree at
    * `role`. The kind builds whatever preview material(s) it needs
@@ -1097,6 +1111,8 @@ export type PaintResolveArgs = {
   localPosition?: readonly [number, number, number]
   /** Optional: name of the three.js object that received the hit. Stair uses this. */
   hitObjectName?: string
+  /** Optional: the three.js object that received the pointer hit. Items read slot metadata from it. */
+  hitObject?: Object3D
 }
 
 export type PaintPatchArgs = {

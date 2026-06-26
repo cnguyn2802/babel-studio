@@ -63,6 +63,8 @@ export {
   MONO_PALETTE,
   PRESET_PALETTES,
   type RenderShading,
+  resolveMaterialRef,
+  resolveSlotDefaultMaterial,
   resolveSurfaceColor,
   WHITE_PALETTE,
 } from './lib/materials'
@@ -89,7 +91,12 @@ export { ElevatorInteractionSystem } from './systems/elevator/elevator-interacti
 // Fence system follows the wall re-export pattern — composed into the
 // registry-driven fence definition's `def.system`. Removed in Phase 6
 // alongside the legacy fence mount point.
-export { FenceSystem, generateFenceGeometry } from './systems/fence/fence-system'
+export {
+  FenceSystem,
+  generateFenceGeometry,
+  generateFenceSlotGeometries,
+  type FenceSlotId,
+} from './systems/fence/fence-system'
 // Generic floor-elevation system. Lifts the rendered mesh of any kind
 // whose definition declares `capabilities.floorPlaced` by the slab
 // elevation under its footprint. Replaces the per-kind elevation block

@@ -46,7 +46,7 @@ export type PaintableMaterialTarget = Extract<
   | 'dormer'
   | 'box-vent'
   | 'ridge-vent'
->
+> | 'item'
 
 export type SingleSurfaceMaterialRole = 'surface'
 
@@ -159,6 +159,42 @@ export function buildRoofSegmentSurfaceMaterialPatch(
   }
 }
 
+export function buildResetSurfaceMaterialUpdates(
+  nodes: Record<string, AnyNode>,
+  node: AnyNode,
+): { id: AnyNodeId; data: Partial<AnyNode> }[] {
+  const clearPatch = (target: AnyNode): Partial<AnyNode> => {
+    const patch: Record<string, undefined> = {}
+    for (const key of Object.keys(target)) {
+      if (
+        key === 'material' ||
+        key === 'materialPreset' ||
+        key === 'slots' ||
+        key.endsWith('Material') ||
+        key.endsWith('MaterialPreset')
+      ) {
+        patch[key] = undefined
+      }
+    }
+    return patch as Partial<AnyNode>
+  }
+
+  const updates: { id: AnyNodeId; data: Partial<AnyNode> }[] = [
+    { id: node.id as AnyNodeId, data: clearPatch(node) },
+  ]
+
+  if (node.type === 'roof') {
+    for (const segmentId of node.children ?? []) {
+      const segment = nodes[segmentId as AnyNodeId]
+      if (segment?.type === 'roof-segment') {
+        updates.push({ id: segment.id as AnyNodeId, data: clearPatch(segment) })
+      }
+    }
+  }
+
+  return updates
+}
+
 export function buildRoofSurfaceMaterialUpdates(
   nodes: Record<string, AnyNode>,
   node: RoofNode,
@@ -264,13 +300,7 @@ export function resolveActivePaintMaterialFromSelection(params: {
   selectedId: string | null
   selectedMaterialTarget: {
     nodeId: string
-    role:
-      | WallSurfaceSide
-      | StairSurfaceMaterialRole
-      | RoofSurfaceMaterialRole
-      | ChimneyMaterialRole
-      | DormerSurfaceMaterialRole
-      | SingleSurfaceMaterialRole
+    role: string
   } | null
 }): ActivePaintMaterial | null {
   const { nodes, selectedId, selectedMaterialTarget } = params
@@ -453,6 +483,10 @@ export function resolvePaintTargetFromSelection(params: {
 
   if (selectedNode.type === 'ridge-vent') {
     return 'ridge-vent'
+  }
+
+  if (selectedNode.type === 'item') {
+    return 'item'
   }
 
   return null

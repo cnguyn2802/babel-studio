@@ -11,6 +11,7 @@ import { type ComponentType, lazy, Suspense } from 'react'
 import useEditor, { type Phase, type Tool } from '../../store/use-editor'
 import { ColumnTool } from './column/column-tool'
 import { ElevatorTool } from './elevator/elevator-tool'
+import { ImportPlacementTool } from './import-placement-tool'
 import { MoveTool } from './item/move-tool'
 import { RoofTool } from './roof/roof-tool'
 import { getRegistryAffordanceTool } from './shared/affordance-dispatch'
@@ -53,6 +54,7 @@ export const ToolManager: React.FC = () => {
   const phase = useEditor((state) => state.phase)
   const mode = useEditor((state) => state.mode)
   const tool = useEditor((state) => state.tool)
+  const pendingImportPlacement = useEditor((state) => state.pendingImportPlacement)
   const movingNode = useEditor((state) => state.movingNode)
   const movingWallEndpoint = useEditor((state) => state.movingWallEndpoint)
   const movingFenceEndpoint = useEditor((state) => state.movingFenceEndpoint)
@@ -121,7 +123,7 @@ export const ToolManager: React.FC = () => {
     !showCeilingBoundaryEditor
 
   // Show build tools when in build mode
-  const showBuildTool = mode === 'build' && tool !== null
+  const showBuildTool = pendingImportPlacement === null && mode === 'build' && tool !== null
 
   // Registry-first: if the active tool's kind has a NodeDefinition with a
   // tool contribution, the registry-driven tool takes over.
@@ -145,6 +147,9 @@ export const ToolManager: React.FC = () => {
       {showSiteBoundaryEditor && <SiteBoundaryEditor />}
       {movingNode?.type === 'building' && (
         <MoveTool onNodeMoved={handlePlacedNodeSelected} onSpawnMoved={handlePlacedNodeSelected} />
+      )}
+      {pendingImportPlacement?.kind === 'ifc-scene' && (
+        <ImportPlacementTool coordinateSpace="world" placement={pendingImportPlacement} />
       )}
 
       {/* Building-local group: all other tools are relative to the selected building.
@@ -244,6 +249,15 @@ export const ToolManager: React.FC = () => {
             onNodeMoved={handlePlacedNodeSelected}
             onSpawnMoved={handlePlacedNodeSelected}
           />
+        )}
+        {pendingImportPlacement?.kind === 'model' && (
+          <ImportPlacementTool coordinateSpace="building" placement={pendingImportPlacement} />
+        )}
+        {pendingImportPlacement?.kind === 'catalog-item' && (
+          <ImportPlacementTool coordinateSpace="building" placement={pendingImportPlacement} />
+        )}
+        {pendingImportPlacement?.kind === 'catalog-build' && (
+          <ImportPlacementTool coordinateSpace="building" placement={pendingImportPlacement} />
         )}
         {/* Registry-first: when the active tool's kind has a registered
             NodeDefinition with a tool contribution, mount it here. */}

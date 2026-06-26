@@ -21,6 +21,9 @@ const barlow = Barlow({
   display: 'swap',
 })
 
+const showDebugOverlays =
+  process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_DEBUG_OVERLAYS === 'true'
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,13 +35,13 @@ export default function RootLayout({
       lang="en"
     >
       <head>
-        {process.env.NODE_ENV === 'development' && (
+        {showDebugOverlays && (
           <script async crossOrigin="anonymous" src="//unpkg.com/react-scan/dist/auto.global.js" />
         )}
       </head>
       <body className="font-sans">
         <ClientBootstrap>{children}</ClientBootstrap>
-        {process.env.NODE_ENV === 'development' && <Agentation />}
+        {showDebugOverlays && <Agentation />}
       </body>
     </html>
   )

@@ -5,25 +5,32 @@ type FrameLimiterProps = {
   fps?: number
 }
 
-const FrameLimiter: React.FC<FrameLimiterProps> = ({ fps = 50 }) => {
-  const { advance, set, frameloop: initFrameloop, scene, clock } = useThree()
-  const renderer = useThree((state) => state.gl)
+const FrameLimiter: React.FC<FrameLimiterProps> = ({ fps = 60 }) => {
+  const { advance, set, frameloop: initFrameloop } = useThree()
 
   useLayoutEffect(() => {
-    let elapsed = 0
-    let then = 0
-    let i = 0
+    let startedAt: number | null = null
+    let then: number | null = null
     let raf: number | null = null
-    const interval = 1000 / fps
+    const interval = 1000 / Math.max(1, fps)
+
     function tick(t: DOMHighResTimeStamp) {
       raf = requestAnimationFrame(tick)
-      elapsed = t - then
-      if (elapsed > interval) {
-        advance(i)
-        i += elapsed / 1000 - (elapsed % interval) / 1000
-        then = t - (elapsed % interval)
+
+      if (startedAt === null || then === null) {
+        startedAt = t
+        then = t
+        advance(0)
+        return
       }
+
+      const elapsed = t - then
+      if (elapsed + 0.5 < interval) return
+
+      then = t - (elapsed % interval)
+      advance((t - startedAt) / 1000)
     }
+
     // Set frameloop to never, it will shut down the default render loop
     set({ frameloop: 'never' })
     // Kick off custom render loop

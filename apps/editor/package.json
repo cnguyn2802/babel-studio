@@ -4,8 +4,11 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-web-ifc-wasm.mjs",
     "dev": "dotenv -e ../../.env.local -- next dev --port 3002",
+    "prebuild": "node scripts/copy-web-ifc-wasm.mjs",
     "build": "dotenv -e ../../.env.local -- next build",
+    "postinstall": "node scripts/copy-web-ifc-wasm.mjs",
     "start": "next start",
     "lint": "biome lint",
     "check-types": "next typegen && tsc --noEmit"
@@ -15,6 +18,7 @@
     "@number-flow/react": "^0.5.14",
     "@pascal-app/core": "*",
     "@pascal-app/editor": "*",
+    "@pascal-app/ifc-converter": "*",
     "@pascal-app/mcp": "*",
     "@pascal-app/nodes": "*",
     "@pascal-app/viewer": "*",
@@ -32,6 +36,7 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "three": "^0.184.0",
+    "web-ifc": "^0.0.77",
     "zod": "^4.3.5"
   },
   "devDependencies": {
@@ -40,6 +45,7 @@
     "@types/node": "^22.19.12",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "@types/three": "^0.184.0",
     "agentation": "^2.3.2",
     "react-grab": "^0.1.29",
     "react-scan": "^0.5.3",

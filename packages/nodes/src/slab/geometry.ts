@@ -1,26 +1,27 @@
-import { getMaterialPresetByRef, type SlabNode } from '@pascal-app/core'
+import { type GeometryContext, getMaterialPresetByRef, type SlabNode } from '@pascal-app/core'
 import {
   applyMaterialPresetToMaterials,
   type ColorPreset,
   createDefaultMaterial,
   createMaterial,
   createSurfaceRoleMaterial,
-  DEFAULT_SLAB_MATERIAL,
   generateSlabGeometry,
   type RenderShading,
+  resolveMaterialRef,
+  resolveSlotDefaultMaterial,
 } from '@pascal-app/viewer'
-import { DoubleSide, Group, type Material, Mesh, type Texture } from 'three'
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  FrontSide,
+  Group,
+  type Material,
+  Mesh,
+  type Texture,
+  Vector3,
+} from 'three'
+import { SLAB_SIDE_SLOT_DEFAULT, SLAB_TOP_SLOT_DEFAULT, type SlabSlotId } from './slots'
 
-/**
- * Stage B builder for slab. Reuses `generateSlabGeometry` (pure
- * triangulation + hole CSG from viewer) and the same material cache
- * pattern the legacy slab renderer used.
- *
- * Materials are cached by `{material, materialPreset}` signature so
- * slabs sharing settings share the GPU resource. Cached entry mutation
- * (preset apply) is preserved — async texture loads still update the
- * rendered material after re-mount.
- */
 type SlabMaterial = Material & {
   alphaMap?: Texture | null
   depthWrite: boolean
@@ -30,20 +31,7 @@ type SlabMaterial = Material & {
 
 const slabMaterialCache = new Map<string, Material>()
 
-function getSlabMaterial(
-  node: SlabNode,
-  shading: RenderShading,
-  textures: boolean,
-  colorPreset: ColorPreset,
-  sceneTheme?: string,
-): Material {
-  // Untextured slabs (and everything in textures-off mode) take the themed
-  // 'floor' role colour. createSurfaceRoleMaterial returns a shared cached
-  // material, so it is returned as-is without the mutation below.
-  if (!textures || (!node.materialPreset && !node.material)) {
-    return createSurfaceRoleMaterial('floor', colorPreset, DoubleSide, sceneTheme)
-  }
-
+function getLegacySlabMaterial(node: SlabNode, shading: RenderShading): Material {
   const cacheKey = JSON.stringify({
     shading,
     material: node.material ?? null,
@@ -57,7 +45,7 @@ function getSlabMaterial(
     ? createDefaultMaterial('#ffffff', 0.5, shading)
     : node.material
       ? createMaterial(node.material, shading).clone()
-      : DEFAULT_SLAB_MATERIAL(shading).clone()
+      : createDefaultMaterial('#e5e5e5', 0.8, shading)
 
   if (preset) {
     applyMaterialPresetToMaterials(material, preset)
@@ -67,7 +55,7 @@ function getSlabMaterial(
   slabMaterial.transparent = false
   slabMaterial.opacity = 1
   slabMaterial.alphaMap = null
-  slabMaterial.side = DoubleSide
+  slabMaterial.side = FrontSide
   slabMaterial.depthWrite = true
   slabMaterial.needsUpdate = true
 
@@ -75,22 +63,115 @@ function getSlabMaterial(
   return material
 }
 
+function getSlabSlotMaterial(
+  node: SlabNode,
+  slotId: SlabSlotId,
+  shading: RenderShading,
+  textures: boolean,
+  colorPreset: ColorPreset,
+  sceneTheme: string | undefined,
+  sceneMaterials: GeometryContext['materials'],
+): Material {
+  if (!textures) {
+    return createSurfaceRoleMaterial('floor', colorPreset, FrontSide, sceneTheme)
+  }
+
+  const slotRef = node.slots?.[slotId]
+  if (slotRef) {
+    const resolved = resolveMaterialRef(slotRef, sceneMaterials, shading)
+    if (resolved) return resolved
+  }
+
+  if (slotId === 'surface' && (node.materialPreset || node.material)) {
+    return getLegacySlabMaterial(node, shading)
+  }
+
+  const slotDefault = slotId === 'side' ? SLAB_SIDE_SLOT_DEFAULT : SLAB_TOP_SLOT_DEFAULT
+  return resolveSlotDefaultMaterial(slotDefault, shading, 0.8)
+}
+
+function splitSlabFacesByFacing(geometry: BufferGeometry): {
+  top: BufferGeometry
+  side: BufferGeometry
+} {
+  const position = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
+  const index = geometry.getIndex()
+  const triangleCount = index ? index.count / 3 : position.count / 3
+
+  const top = { pos: [] as number[], uv: [] as number[] }
+  const side = { pos: [] as number[], uv: [] as number[] }
+  const a = new Vector3()
+  const b = new Vector3()
+  const c = new Vector3()
+  const ab = new Vector3()
+  const ac = new Vector3()
+  const normal = new Vector3()
+
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    const i0 = index ? index.getX(triangle * 3) : triangle * 3
+    const i1 = index ? index.getX(triangle * 3 + 1) : triangle * 3 + 1
+    const i2 = index ? index.getX(triangle * 3 + 2) : triangle * 3 + 2
+    a.fromBufferAttribute(position, i0)
+    b.fromBufferAttribute(position, i1)
+    c.fromBufferAttribute(position, i2)
+    ab.subVectors(b, a)
+    ac.subVectors(c, a)
+    normal.crossVectors(ab, ac)
+    const lengthSq = normal.lengthSq()
+    const isTop = lengthSq > 1e-12 && normal.y / Math.sqrt(lengthSq) > 0.5
+    const target = isTop ? top : side
+    for (const i of [i0, i1, i2]) {
+      target.pos.push(position.getX(i), position.getY(i), position.getZ(i))
+      if (uv) target.uv.push(uv.getX(i), uv.getY(i))
+    }
+  }
+
+  const build = (data: { pos: number[]; uv: number[] }) => {
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new Float32BufferAttribute(data.pos, 3))
+    if (data.uv.length > 0) geo.setAttribute('uv', new Float32BufferAttribute(data.uv, 2))
+    geo.computeVertexNormals()
+    return geo
+  }
+
+  return { top: build(top), side: build(side) }
+}
+
 export function buildSlabGeometry(
   node: SlabNode,
-  _ctx?: unknown,
+  ctx?: GeometryContext,
   shading: RenderShading = 'rendered',
   textures = true,
   colorPreset: ColorPreset = 'clay',
   sceneTheme?: string,
 ): Group {
   const group = new Group()
-  const geometry = generateSlabGeometry(node)
-  const material = getSlabMaterial(node, shading, textures, colorPreset, sceneTheme)
-  const mesh = new Mesh(geometry, material)
-  mesh.castShadow = true
-  mesh.receiveShadow = true
+  const merged = generateSlabGeometry(node)
+  const { top, side } = splitSlabFacesByFacing(merged)
+  merged.dispose()
+
   const elevation = node.elevation ?? 0.05
-  if (elevation < 0) mesh.position.y = elevation
-  group.add(mesh)
+  for (const [slotId, geometry] of [
+    ['surface', top],
+    ['side', side],
+  ] as const) {
+    const material = getSlabSlotMaterial(
+      node,
+      slotId,
+      shading,
+      textures,
+      colorPreset,
+      sceneTheme,
+      ctx?.materials,
+    )
+    const mesh = new Mesh(geometry, material)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    mesh.userData.slotId = slotId
+    if (elevation < 0) mesh.position.y = elevation
+    group.add(mesh)
+  }
+
   return group
 }

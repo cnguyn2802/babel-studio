@@ -9,6 +9,7 @@ export const SlabNode = BaseNode.extend({
   type: nodeType('slab'),
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
+  slots: z.record(z.string(), z.string()).optional(),
   polygon: z.array(z.tuple([z.number(), z.number()])),
   holes: z.array(z.array(z.tuple([z.number(), z.number()]))).default([]),
   holeMetadata: z.array(SurfaceHoleMetadata).default([]),

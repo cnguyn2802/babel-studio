@@ -58,6 +58,7 @@ export const GeometrySystem = () => {
   const textures = useViewer((s) => s.textures)
   const colorPreset = useViewer((s) => s.colorPreset)
   const sceneTheme = useViewer((s) => s.sceneTheme)
+  const sceneMaterials = useScene((s) => s.materials)
 
   useEffect(() => {
     const nodes = useScene.getState().nodes
@@ -68,6 +69,16 @@ export const GeometrySystem = () => {
       }
     }
   }, [shading, textures, colorPreset, sceneTheme])
+
+  useEffect(() => {
+    const nodes = useScene.getState().nodes
+    for (const node of Object.values(nodes)) {
+      const def = nodeRegistry.get(node.type)
+      if (!def?.geometry) continue
+      if (!nodeReferencesSceneMaterial(node)) continue
+      useScene.getState().markDirty(node.id as AnyNodeId)
+    }
+  }, [sceneMaterials])
 
   useFrame(() => {
     if (dirtyNodes.size === 0) return
@@ -149,7 +160,7 @@ export const GeometrySystem = () => {
       const parentId = (node.parentId ?? null) as AnyNodeId | null
       const key: BatchKey = `${node.type}::${parentId ?? ''}`
       const levelData = levelDataByBatch.get(key)
-      const ctx = buildGeometryContext(effectiveNode, nodes, levelData)
+      const ctx = buildGeometryContext(effectiveNode, nodes, levelData, sceneMaterials)
 
       // The builder is typed against the kind's specific node — at the
       // generic system level we lose that refinement, so the cast lands
@@ -206,6 +217,7 @@ function buildGeometryContext(
   node: AnyNode,
   nodes: Record<string, AnyNode>,
   levelData: unknown,
+  materials: GeometryContext['materials'],
 ): GeometryContext {
   const resolve = <N = AnyNode>(id: AnyNodeId): N | undefined => nodes[id] as N | undefined
 
@@ -236,7 +248,16 @@ function buildGeometryContext(
     }
   }
 
-  return { resolve, children, siblings, parent, levelData }
+  return { resolve, children, siblings, parent, levelData, materials }
+}
+
+function nodeReferencesSceneMaterial(node: AnyNode): boolean {
+  const slots = (node as { slots?: Record<string, string> }).slots
+  if (!slots) return false
+  for (const ref of Object.values(slots)) {
+    if (typeof ref === 'string' && ref.startsWith('scene:')) return true
+  }
+  return false
 }
 
 function disposeChildren(group: Group) {

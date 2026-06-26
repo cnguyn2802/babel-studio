@@ -1,14 +1,15 @@
 import {
+  type AnyNode,
   type AnyNodeId,
   getEffectiveWallSurfaceMaterial,
-  type MaterialSchema,
   type PaintCapability,
+  type PaintPreviewArgs,
   sceneRegistry,
   type WallNode,
   type WallSurfaceSide,
 } from '@pascal-app/core'
-import { getVisibleWallMaterials } from '@pascal-app/viewer'
 import type { Material, Mesh } from 'three'
+import { buildSlotPreviewMaterial, createSlotPaintCapability } from '../shared/slot-paint'
 
 /**
  * Resolve which side of a wall the user clicked. Walls expose two
@@ -56,56 +57,33 @@ export function resolveWallRole(args: {
   return hitFace === 'front' ? 'interior' : 'exterior'
 }
 
-export function buildWallSurfaceMaterialPatch(
-  node: WallNode,
-  targetSide: WallSurfaceSide,
-  material: MaterialSchema | undefined,
-  materialPreset: string | undefined,
-): Partial<WallNode> {
-  const nextSurfaceMaterial = { material, materialPreset }
-  const nextInterior =
-    targetSide === 'interior'
-      ? nextSurfaceMaterial
-      : getEffectiveWallSurfaceMaterial(node, 'interior')
-  const nextExterior =
-    targetSide === 'exterior'
-      ? nextSurfaceMaterial
-      : getEffectiveWallSurfaceMaterial(node, 'exterior')
-
-  return {
-    interiorMaterial: nextInterior.material,
-    interiorMaterialPreset: nextInterior.materialPreset,
-    exteriorMaterial: nextExterior.material,
-    exteriorMaterialPreset: nextExterior.materialPreset,
-    material: undefined,
-    materialPreset: undefined,
-  }
+const WALL_SIDE_MATERIAL_INDEX: Record<WallSurfaceSide, 1 | 2> = {
+  interior: 1,
+  exterior: 2,
 }
 
 /**
- * Apply a preview to the wall's registered mesh by synthesising the
- * post-paint node, asking the viewer's `getVisibleWallMaterials` for
- * the corresponding material array, and swapping the mesh's
- * material assignment until the editor calls the returned cleanup.
+ * Preview wall paint by swapping just the painted face in the current
+ * material array. The cached wall material array must not be mutated.
  */
-function applyWallPreview(
-  node: WallNode,
-  role: WallSurfaceSide,
-  material: MaterialSchema | undefined,
-  materialPreset: string | undefined,
-): (() => void) | null {
-  const mesh = sceneRegistry.nodes.get(node.id as AnyNodeId)
+function applyWallPreview(args: PaintPreviewArgs): (() => void) | null {
+  const side = args.role as WallSurfaceSide
+  const index = WALL_SIDE_MATERIAL_INDEX[side]
+  if (!index) return null
+
+  const mesh = sceneRegistry.nodes.get(args.node.id as AnyNodeId)
   if (!(mesh && (mesh as Mesh).isMesh)) return null
   const wallMesh = mesh as Mesh
 
-  const previewNode: WallNode = {
-    ...node,
-    ...buildWallSurfaceMaterialPatch(node, role, material, materialPreset),
-  }
-  const nextMaterial = getVisibleWallMaterials(previewNode)
-  if (!nextMaterial) return null
+  const current = wallMesh.material
+  if (!Array.isArray(current)) return null
 
-  const previousMaterial = wallMesh.material as Material | Material[]
+  const preview = buildSlotPreviewMaterial(args.material, args.materialPreset)
+  if (!preview) return () => {}
+
+  const previousMaterial = current as Material[]
+  const nextMaterial = previousMaterial.slice()
+  nextMaterial[index] = preview
   wallMesh.material = nextMaterial
   return () => {
     wallMesh.material = previousMaterial
@@ -113,24 +91,17 @@ function applyWallPreview(
 }
 
 /**
- * Capability binding for the wall kind. The editor's
- * selection-manager invokes these in place of the legacy
- * `if (node.type === 'wall') { ... }` arms.
+ * Capability binding for the wall kind on the unified slot model. Painting
+ * writes `node.slots[interior|exterior]`; older inline material fields are
+ * still read so pre-slot scenes show their current wall finish in the picker.
  */
-export const wallPaint: PaintCapability = {
+export const wallPaint: PaintCapability = createSlotPaintCapability({
   resolveRole: ({ node, materialIndex, normal, localPosition }) =>
     resolveWallRole({ node: node as WallNode, materialIndex, normal, localPosition }),
-  buildPatch: ({ node, role, material, materialPreset }) =>
-    buildWallSurfaceMaterialPatch(
-      node as WallNode,
-      role as WallSurfaceSide,
-      material,
-      materialPreset,
-    ),
-  applyPreview: ({ node, role, material, materialPreset }) =>
-    applyWallPreview(node as WallNode, role as WallSurfaceSide, material, materialPreset),
-  getEffectiveMaterial: ({ node, role }) => {
+  applyPreview: applyWallPreview,
+  legacyEffective: (node: AnyNode, role: string) => {
     const spec = getEffectiveWallSurfaceMaterial(node as WallNode, role as WallSurfaceSide)
+    if (spec.material === undefined && spec.materialPreset === undefined) return null
     return { material: spec.material, materialPreset: spec.materialPreset }
   },
-}
+})

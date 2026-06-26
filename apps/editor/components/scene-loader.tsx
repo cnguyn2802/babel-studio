@@ -9,9 +9,12 @@ import {
   type SceneGraph,
   type SidebarTab,
 } from '@pascal-app/editor'
+import { convertIfcToPascal } from '@pascal-app/ifc-converter'
+import { MessageSquare, Workflow } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { EditorMcpPanel } from './editor-mcp-panel'
 import { CommunityViewerToolbarLeft, CommunityViewerToolbarRight } from './viewer-toolbar'
 
 export interface SceneMeta {
@@ -30,10 +33,25 @@ export interface SceneMeta {
 const SIDEBAR_TABS: (SidebarTab & { component: React.ComponentType })[] = [
   {
     id: 'site',
-    label: 'Scene',
+    label: 'Hierarchy',
     component: () => null, // Built-in SitePanel handles this
+    mobileIcon: <Workflow className="h-5 w-5" />,
+    icon: <Workflow className="h-5 w-5" />,
+  },
+  {
+    id: 'mcp',
+    label: 'MCP',
+    component: EditorMcpPanel,
+    mobileDefaultSnap: 0.75,
+    mobileIcon: <MessageSquare className="h-5 w-5" />,
+    icon: <MessageSquare className="h-5 w-5" />,
   },
 ]
+
+async function importIfcFile(file: File) {
+  const data = new Uint8Array(await file.arrayBuffer())
+  return convertIfcToPascal(data)
+}
 
 interface SceneLoaderProps {
   initialScene: SceneGraph
@@ -201,7 +219,15 @@ export function SceneLoader({ initialScene, meta }: SceneLoaderProps) {
         onSave={handleSave}
         onThumbnailCapture={handleThumb}
         projectId={meta.projectId ?? 'default'}
-        sidebarTabs={SIDEBAR_TABS}
+        settingsPanelProps={{ onImportIfcFile: importIfcFile }}
+        sidebarTabs={SIDEBAR_TABS.map((tab) =>
+          tab.id === 'mcp'
+            ? {
+                ...tab,
+                component: () => <EditorMcpPanel sceneId={meta.id} />,
+              }
+            : tab,
+        )}
         viewerToolbarLeft={<CommunityViewerToolbarLeft />}
         viewerToolbarRight={<CommunityViewerToolbarRight />}
       />

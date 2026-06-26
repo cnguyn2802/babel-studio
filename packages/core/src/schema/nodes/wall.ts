@@ -20,6 +20,9 @@ export const WallNode = BaseNode.extend({
   interiorMaterialPreset: z.string().optional(),
   exteriorMaterial: MaterialSchema.optional(),
   exteriorMaterialPreset: z.string().optional(),
+  // Unified paint-slot refs (`scene:`/`library:` MaterialRef per side).
+  // Legacy material fields above remain readable for older scenes.
+  slots: z.record(z.string(), z.string()).optional(),
   thickness: z.number().optional(),
   height: z.number().optional(),
   curveOffset: z.number().optional(),
@@ -45,6 +48,11 @@ export const WallNode = BaseNode.extend({
 export type WallNode = z.infer<typeof WallNode>
 
 export type WallSurfaceSide = 'interior' | 'exterior'
+
+export const WALL_SLOT_DEFAULT: Record<WallSurfaceSide, string> = {
+  interior: 'library:concrete-drywall',
+  exterior: 'library:concrete-drywall',
+}
 
 export type WallSurfaceMaterialSpec = {
   material?: z.infer<typeof MaterialSchema>

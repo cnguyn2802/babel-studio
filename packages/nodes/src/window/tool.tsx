@@ -44,9 +44,13 @@ const WindowTool: React.FC = () => {
     useScene.temporal.getState().pause()
 
     const getLevelId = () => useViewer.getState().selection.levelId
-    const getLevelYOffset = () => {
-      const id = getLevelId()
+    const getLevelYOffset = (id: string | null | undefined = getLevelId()) => {
       return id ? (sceneRegistry.nodes.get(id as AnyNodeId)?.position.y ?? 0) : 0
+    }
+    const getPlacementLevelId = (wallLevelId: string | null | undefined) => {
+      const selectedLevelId = getLevelId()
+      if (selectedLevelId) return wallLevelId === selectedLevelId ? selectedLevelId : null
+      return wallLevelId ?? null
     }
     const getSlabElevation = (wallEvent: WallEvent) =>
       spatialGridManager.getSlabElevationForWall(
@@ -92,10 +96,8 @@ const WindowTool: React.FC = () => {
         hideCursor()
         return
       }
-      const levelId = getLevelId()
+      const levelId = getPlacementLevelId(event.node.parentId)
       if (!levelId) return
-      // Only interact with walls on the current level
-      if (event.node.parentId !== levelId) return
 
       destroyDraft()
 
@@ -130,7 +132,7 @@ const WindowTool: React.FC = () => {
           event.node,
           clampedX,
           clampedY,
-          getLevelYOffset(),
+          getLevelYOffset(levelId),
           getSlabElevation(event),
         ),
         cursorRotation,
@@ -146,8 +148,8 @@ const WindowTool: React.FC = () => {
         hideCursor()
         return
       }
-      // Only interact with walls on the current level
-      if (event.node.parentId !== getLevelId()) return
+      const levelId = getPlacementLevelId(event.node.parentId)
+      if (!levelId) return
 
       const side = getSideFromNormal(event.normal)
       const itemRotation = calculateItemRotation(event.normal)
@@ -202,7 +204,7 @@ const WindowTool: React.FC = () => {
           event.node,
           clampedX,
           clampedY,
-          getLevelYOffset(),
+          getLevelYOffset(levelId),
           getSlabElevation(event),
         ),
         cursorRotation,
@@ -215,8 +217,8 @@ const WindowTool: React.FC = () => {
       if (!draftRef.current) return
       if (!isValidWallSideFace(event.normal)) return
       if (isCurvedWall(event.node)) return
-      // Only interact with walls on the current level
-      if (event.node.parentId !== getLevelId()) return
+      const placementLevelId = getPlacementLevelId(event.node.parentId)
+      if (!placementLevelId) return
 
       const side = getSideFromNormal(event.normal)
       const itemRotation = calculateItemRotation(event.normal)
@@ -249,7 +251,7 @@ const WindowTool: React.FC = () => {
       // Resume → create permanent node (single undoable action)
       useScene.temporal.getState().resume()
 
-      const levelId = getLevelId()
+      const levelId = placementLevelId
       const state = useScene.getState()
       const windowCount = Object.values(state.nodes).filter((n) => {
         if (n.type !== 'window') return false

@@ -104,6 +104,11 @@ export {
   RoofType,
 } from './nodes/roof-segment'
 export { ScanNode } from './nodes/scan'
+export {
+  generateSceneMaterialId,
+  SceneMaterial,
+  type SceneMaterialId,
+} from './scene-material'
 export { ShelfNode } from './nodes/shelf'
 export { SiteNode } from './nodes/site'
 export {
@@ -137,6 +142,7 @@ export type { WallSurfaceMaterialSpec, WallSurfaceSide } from './nodes/wall'
 export {
   getEffectiveWallSurfaceMaterial,
   getWallSurfaceMaterialSignature,
+  WALL_SLOT_DEFAULT,
   WallNode,
 } from './nodes/wall'
 export { WindowNode, WindowType } from './nodes/window'

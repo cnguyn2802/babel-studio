@@ -2,9 +2,14 @@ import {
   getEffectiveWallSurfaceMaterial,
   getMaterialPresetByRef,
   getWallSurfaceMaterialSignature,
+  parseMaterialRef,
   resolveMaterial,
+  type SceneMaterial,
+  type SceneMaterialId,
+  WALL_SLOT_DEFAULT,
   type WallNode,
   type WallSurfaceMaterialSpec,
+  type WallSurfaceSide,
 } from '@pascal-app/core'
 import { Color, type Material } from 'three'
 import { Fn, float, fract, length, mix, positionLocal, smoothstep, step, vec2 } from 'three/tsl'
@@ -16,8 +21,12 @@ import {
   createMaterialFromPresetRef,
   createSurfaceRoleMaterial,
   type RenderShading,
+  resolveMaterialRef,
+  resolveSlotDefaultMaterial,
   resolveSurfaceColor,
 } from '../../lib/materials'
+
+type SceneMaterials = Record<SceneMaterialId, SceneMaterial> | undefined
 
 const DEFAULT_WALL_COLOR = '#f2f0ed'
 
@@ -86,6 +95,68 @@ function getSurfaceVisibleMaterial(
 
 function hasExplicitMaterial(spec: WallSurfaceMaterialSpec): boolean {
   return Boolean(spec.materialPreset || spec.material)
+}
+
+function resolveWallFaceMaterial(
+  wallNode: WallNode,
+  side: WallSurfaceSide,
+  shading: RenderShading,
+  sceneMaterials: SceneMaterials,
+): Material {
+  const ref = wallNode.slots?.[side]
+  if (ref) {
+    return (
+      resolveMaterialRef(ref, sceneMaterials, shading) ??
+      resolveSlotDefaultMaterial(WALL_SLOT_DEFAULT[side], shading, 0.9)
+    )
+  }
+
+  const spec = getEffectiveWallSurfaceMaterial(wallNode, side)
+  if (hasExplicitMaterial(spec)) {
+    return getSurfaceVisibleMaterial(spec, shading)
+  }
+
+  return resolveSlotDefaultMaterial(WALL_SLOT_DEFAULT[side], shading, 0.9)
+}
+
+function wallFaceMaterialSignature(
+  wallNode: WallNode,
+  side: WallSurfaceSide,
+  sceneMaterials: SceneMaterials,
+): string {
+  const ref = wallNode.slots?.[side]
+  if (ref) {
+    const parsed = parseMaterialRef(ref)
+    if (parsed?.kind === 'scene') {
+      return JSON.stringify({
+        ref,
+        material: sceneMaterials?.[parsed.id as SceneMaterialId]?.material ?? null,
+      })
+    }
+    return JSON.stringify({ ref })
+  }
+  return getWallSurfaceMaterialSignature(getEffectiveWallSurfaceMaterial(wallNode, side))
+}
+
+function resolveWallFaceColor(
+  wallNode: WallNode,
+  side: WallSurfaceSide,
+  sceneMaterials: SceneMaterials,
+  fallback: string,
+): string {
+  const ref = wallNode.slots?.[side]
+  if (ref) {
+    const parsed = parseMaterialRef(ref)
+    if (parsed?.kind === 'library') {
+      return getMaterialPresetByRef(ref)?.mapProperties?.color ?? fallback
+    }
+    if (parsed?.kind === 'scene') {
+      const sceneMaterial = sceneMaterials?.[parsed.id as SceneMaterialId]
+      return sceneMaterial ? resolveMaterial(sceneMaterial.material).color : fallback
+    }
+    return fallback
+  }
+  return getSurfaceColor(getEffectiveWallSurfaceMaterial(wallNode, side), fallback)
 }
 
 function getSurfaceColor(spec: WallSurfaceMaterialSpec, fallback = DEFAULT_WALL_COLOR): string {
@@ -173,15 +244,15 @@ function disposeOwnedMaterials(materials: WallMaterialArray[]) {
   })
 }
 
-export function getWallMaterialHash(wallNode: WallNode, shading: RenderShading): string {
+export function getWallMaterialHash(
+  wallNode: WallNode,
+  shading: RenderShading,
+  sceneMaterials?: SceneMaterials,
+): string {
   return JSON.stringify({
     shading,
-    interior: getWallSurfaceMaterialSignature(
-      getEffectiveWallSurfaceMaterial(wallNode, 'interior'),
-    ),
-    exterior: getWallSurfaceMaterialSignature(
-      getEffectiveWallSurfaceMaterial(wallNode, 'exterior'),
-    ),
+    interior: wallFaceMaterialSignature(wallNode, 'interior', sceneMaterials),
+    exterior: wallFaceMaterialSignature(wallNode, 'exterior', sceneMaterials),
   })
 }
 
@@ -191,10 +262,11 @@ export function getMaterialsForWall(
   textures = true,
   colorPreset: ColorPreset = 'clay',
   sceneTheme?: string,
+  sceneMaterials?: SceneMaterials,
 ): WallMaterials {
   const cacheKey = `${wallNode.id}-${shading}-${textures}-${colorPreset}-${sceneTheme ?? 'base'}`
   const materialHash = textures
-    ? getWallMaterialHash(wallNode, shading)
+    ? getWallMaterialHash(wallNode, shading, sceneMaterials)
     : JSON.stringify({ textures, colorPreset, sceneTheme })
 
   const existing = wallMaterialCache.get(cacheKey)
@@ -212,21 +284,13 @@ export function getMaterialsForWall(
     ])
   }
 
-  const interiorSpec = getEffectiveWallSurfaceMaterial(wallNode, 'interior')
-  const exteriorSpec = getEffectiveWallSurfaceMaterial(wallNode, 'exterior')
   const wallRoleMaterial = createSurfaceRoleMaterial('wall', colorPreset, undefined, sceneTheme)
 
-  // Untextured surfaces take the themed wall role colour even with textures on;
-  // only surfaces with an explicit preset/material keep their texture.
   const visible: WallMaterialArray = textures
     ? [
         wallRoleMaterial,
-        hasExplicitMaterial(interiorSpec)
-          ? getSurfaceVisibleMaterial(interiorSpec, shading)
-          : wallRoleMaterial,
-        hasExplicitMaterial(exteriorSpec)
-          ? getSurfaceVisibleMaterial(exteriorSpec, shading)
-          : wallRoleMaterial,
+        resolveWallFaceMaterial(wallNode, 'interior', shading, sceneMaterials),
+        resolveWallFaceMaterial(wallNode, 'exterior', shading, sceneMaterials),
       ]
     : [wallRoleMaterial, wallRoleMaterial, wallRoleMaterial]
 
@@ -234,11 +298,15 @@ export function getMaterialsForWall(
   const invisible: WallMaterialArray = [
     createInvisibleWallMaterial(wallRoleColor, textures ? shading : 'solid'),
     createInvisibleWallMaterial(
-      textures ? getSurfaceColor(interiorSpec, wallRoleColor) : wallRoleColor,
+      textures
+        ? resolveWallFaceColor(wallNode, 'interior', sceneMaterials, wallRoleColor)
+        : wallRoleColor,
       textures ? shading : 'solid',
     ),
     createInvisibleWallMaterial(
-      textures ? getSurfaceColor(exteriorSpec, wallRoleColor) : wallRoleColor,
+      textures
+        ? resolveWallFaceColor(wallNode, 'exterior', sceneMaterials, wallRoleColor)
+        : wallRoleColor,
       textures ? shading : 'solid',
     ),
   ]
@@ -276,6 +344,8 @@ export function getVisibleWallMaterials(
   textures = true,
   colorPreset: ColorPreset = 'clay',
   sceneTheme?: string,
+  sceneMaterials?: SceneMaterials,
 ): WallMaterialArray {
-  return getMaterialsForWall(wallNode, shading, textures, colorPreset, sceneTheme).visible
+  return getMaterialsForWall(wallNode, shading, textures, colorPreset, sceneTheme, sceneMaterials)
+    .visible
 }

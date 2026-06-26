@@ -11,6 +11,7 @@ export const CeilingNode = BaseNode.extend({
   children: z.array(ItemNode.shape.id).default([]),
   material: MaterialSchema.optional(),
   materialPreset: z.string().optional(),
+  slots: z.record(z.string(), z.string()).optional(),
   polygon: z.array(z.tuple([z.number(), z.number()])),
   holes: z.array(z.array(z.tuple([z.number(), z.number()]))).default([]),
   holeMetadata: z.array(SurfaceHoleMetadata).default([]),

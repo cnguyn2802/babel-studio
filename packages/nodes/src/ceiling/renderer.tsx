@@ -5,61 +5,25 @@ import {
   getMaterialPresetByRef,
   resolveMaterial,
   useRegistry,
+  useScene,
 } from '@pascal-app/core'
 import {
   createSurfaceRoleMaterial,
   NodeRenderer,
+  resolveSurfaceColor,
   useNodeEvents,
   useViewer,
 } from '@pascal-app/viewer'
 import { useEffect, useMemo, useRef } from 'react'
 import { BufferGeometry, Float32BufferAttribute } from 'three'
-import { float, mix, positionWorld, smoothstep } from 'three/tsl'
-import { BackSide, FrontSide, type Mesh, MeshBasicNodeMaterial } from 'three/webgpu'
+import { BackSide, FrontSide, type Mesh } from 'three/webgpu'
+import { ceilingColorFromRef, getCeilingMaterials } from './materials'
+import { CEILING_SLOT_DEFAULT_COLOR } from './slots'
 
 function createEmptyGeometry() {
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new Float32BufferAttribute([], 3))
   return geometry
-}
-
-const gridScale = 5
-const gridX = positionWorld.x.mul(gridScale).fract()
-const gridY = positionWorld.z.mul(gridScale).fract()
-const lineWidth = 0.05
-const lineX = smoothstep(lineWidth, 0, gridX).add(smoothstep(1.0 - lineWidth, 1.0, gridX))
-const lineY = smoothstep(lineWidth, 0, gridY).add(smoothstep(1.0 - lineWidth, 1.0, gridY))
-const gridPattern = lineX.max(lineY)
-const gridOpacity = mix(float(0.2), float(0.6), gridPattern)
-
-function createCeilingMaterials(color = '#999999') {
-  const topMaterial = new MeshBasicNodeMaterial({
-    color,
-    transparent: true,
-    depthWrite: false,
-    side: FrontSide,
-  })
-  topMaterial.opacityNode = gridOpacity
-
-  const bottomMaterial = new MeshBasicNodeMaterial({
-    color,
-    transparent: true,
-    side: BackSide,
-  })
-
-  return { topMaterial, bottomMaterial }
-}
-
-const ceilingMaterialCache = new Map<string, ReturnType<typeof createCeilingMaterials>>()
-
-function getCeilingMaterials(color = '#999999') {
-  const cacheKey = color
-  const cached = ceilingMaterialCache.get(cacheKey)
-  if (cached) return cached
-
-  const materials = createCeilingMaterials(color)
-  ceilingMaterialCache.set(cacheKey, materials)
-  return materials
 }
 
 export const CeilingRenderer = ({ node }: { node: CeilingNode }) => {
@@ -72,6 +36,7 @@ export const CeilingRenderer = ({ node }: { node: CeilingNode }) => {
   const textures = useViewer((s) => s.textures)
   const colorPreset = useViewer((s) => s.colorPreset)
   const sceneTheme = useViewer((s) => s.sceneTheme)
+  const sceneMaterials = useScene((s) => s.materials)
 
   useEffect(
     () => () => {
@@ -82,24 +47,30 @@ export const CeilingRenderer = ({ node }: { node: CeilingNode }) => {
   )
 
   const materials = useMemo(() => {
-    // Untextured ceilings (and everything in textures-off mode) take the themed
-    // 'ceiling' role colour; only an explicit preset/material keeps a texture.
-    const hasExplicit = Boolean(node.materialPreset || node.material)
-    if (!textures || !hasExplicit) {
+    if (!textures) {
+      const ceilingColor = resolveSurfaceColor('ceiling', colorPreset, sceneTheme)
       return {
-        topMaterial: createSurfaceRoleMaterial('ceiling', colorPreset, FrontSide, sceneTheme),
+        topMaterial: getCeilingMaterials(ceilingColor).topMaterial,
         bottomMaterial: createSurfaceRoleMaterial('ceiling', colorPreset, BackSide, sceneTheme),
       }
     }
 
+    const slotColor = ceilingColorFromRef(node.slots?.surface, sceneMaterials)
+    if (slotColor) return getCeilingMaterials(slotColor)
+
     const preset = getMaterialPresetByRef(node.materialPreset)
-    const props = preset?.mapProperties ?? resolveMaterial(node.material)
-    const color = props.color || '#999999'
-    return getCeilingMaterials(color)
+    if (preset || node.material) {
+      const props = preset?.mapProperties ?? resolveMaterial(node.material)
+      return getCeilingMaterials(props.color || '#999999')
+    }
+
+    return getCeilingMaterials(CEILING_SLOT_DEFAULT_COLOR)
   }, [
     textures,
     colorPreset,
     sceneTheme,
+    sceneMaterials,
+    node.slots,
     node.materialPreset,
     node.material,
     node.material?.preset,

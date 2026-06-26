@@ -35,7 +35,10 @@ export interface SceneOperations {
   clearActiveScene(): void
   loadDefault(): void
   setScene(nodes: Record<AnyNodeId, AnyNode>, rootNodeIds: AnyNodeId[]): void
-  exportJSON(): SceneGraph & { collections: Record<string, unknown> }
+  exportJSON(): SceneGraph & {
+    collections: Record<string, unknown>
+    materials: Record<string, unknown>
+  }
   exportSceneGraph(): SceneGraph
   loadJSON(json: string | SceneGraph): void
   getNode(id: AnyNodeId): AnyNode | null
@@ -140,7 +143,10 @@ class SceneOperationsFacade implements SceneOperations {
     this.requireBridge().setScene(nodes, rootNodeIds)
   }
 
-  exportJSON(): SceneGraph & { collections: Record<string, unknown> } {
+  exportJSON(): SceneGraph & {
+    collections: Record<string, unknown>
+    materials: Record<string, unknown>
+  } {
     return this.requireBridge().exportJSON()
   }
 
@@ -150,6 +156,7 @@ class SceneOperationsFacade implements SceneOperations {
       nodes: exported.nodes,
       rootNodeIds: exported.rootNodeIds,
       collections: exported.collections as SceneGraph['collections'],
+      materials: exported.materials as SceneGraph['materials'],
     }
   }
 

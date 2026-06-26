@@ -1,11 +1,13 @@
 import type { AnyNode, AnyNodeId } from '../schema'
 import { generateId } from '../schema/base'
 import type { Collection, CollectionId } from '../schema/collections'
+import type { SceneMaterial, SceneMaterialId } from '../schema/scene-material'
 
 export type SceneGraph = {
   nodes: Record<AnyNodeId, AnyNode>
   rootNodeIds: AnyNodeId[]
   collections?: Record<CollectionId, Collection>
+  materials?: Record<SceneMaterialId, SceneMaterial>
 }
 
 /**
@@ -26,7 +28,7 @@ function extractIdPrefix(id: string): string {
  * - Multi-scene in-memory scenarios
  */
 export function cloneSceneGraph(sceneGraph: SceneGraph): SceneGraph {
-  const { nodes, rootNodeIds, collections } = sceneGraph
+  const { nodes, rootNodeIds, collections, materials } = sceneGraph
 
   // Build ID mapping: old ID -> new ID
   const idMap = new Map<string, string>()
@@ -127,6 +129,7 @@ export function cloneSceneGraph(sceneGraph: SceneGraph): SceneGraph {
     nodes: clonedNodes,
     rootNodeIds: clonedRootNodeIds,
     ...(clonedCollections && { collections: clonedCollections }),
+    ...(materials && { materials: structuredClone(materials) }),
   }
 }
 
@@ -232,7 +235,7 @@ export function cloneLevelSubtree(
  * imagery that shouldn't carry over to a forked project.
  */
 export function forkSceneGraph(sceneGraph: SceneGraph): SceneGraph {
-  const { nodes, rootNodeIds, collections } = sceneGraph
+  const { nodes, rootNodeIds, collections, materials } = sceneGraph
 
   // First, identify scan and guide node IDs to exclude (user-uploaded imagery)
   const excludedNodeIds = new Set<string>()
@@ -294,5 +297,6 @@ export function forkSceneGraph(sceneGraph: SceneGraph): SceneGraph {
     nodes: filteredNodes,
     rootNodeIds: filteredRootNodeIds,
     ...(filteredCollections && { collections: filteredCollections }),
+    ...(materials && { materials }),
   })
 }

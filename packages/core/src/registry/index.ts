@@ -94,6 +94,7 @@ export type {
   ScalableConfig,
   SceneApi,
   SelectableConfig,
+  SlotDeclaration,
   SnapPointKind,
   SnappableConfig,
   SnapServicesLike,

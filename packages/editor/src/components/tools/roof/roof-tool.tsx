@@ -1,13 +1,17 @@
 import {
   type AnyNode,
   type AnyNodeId,
+  type CeilingNode,
   emitter,
   type GridEvent,
   type LevelNode,
   RoofNode,
   RoofSegmentNode,
   sceneRegistry,
+  type SlabNode,
+  spatialGridManager,
   useScene,
+  type WallNode,
 } from '@pascal-app/core'
 import { useViewer } from '@pascal-app/viewer'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -23,6 +27,59 @@ const DEFAULT_WALL_HEIGHT = 0.5
 const DEFAULT_PITCH_DEG = 40
 const GRID_OFFSET = 0.02
 
+function getRoofBaseY(
+  levelId: LevelNode['id'],
+  centerX: number,
+  centerZ: number,
+  corner1?: [number, number, number],
+  corner2?: [number, number, number],
+): number {
+  const nodes = useScene.getState().nodes
+  const level = nodes[levelId] as LevelNode | undefined
+  if (!level) return 0
+
+  let baseY = 0
+  for (const childId of level.children ?? []) {
+    const child = nodes[childId as AnyNodeId]
+    if (!child) continue
+
+    if (child.type === 'ceiling') {
+      baseY = Math.max(baseY, (child as CeilingNode).height ?? 0)
+      continue
+    }
+
+    if (child.type === 'wall') {
+      const wall = child as WallNode
+      const slabElevation = spatialGridManager.getSlabElevationForWall(
+        levelId,
+        wall.start,
+        wall.end,
+      )
+      baseY = Math.max(baseY, slabElevation + (wall.height ?? 0))
+      continue
+    }
+
+    if (child.type === 'slab') {
+      baseY = Math.max(baseY, (child as SlabNode).elevation ?? 0)
+    }
+  }
+
+  const samplePoints: Array<[number, number]> = [[centerX, centerZ]]
+  if (corner1 && corner2) {
+    samplePoints.push(
+      [corner1[0], corner1[2]],
+      [corner2[0], corner2[2]],
+      [corner1[0], corner2[2]],
+      [corner2[0], corner1[2]],
+    )
+  }
+  for (const [x, z] of samplePoints) {
+    baseY = Math.max(baseY, spatialGridManager.getSlabElevationAt(levelId, x, z))
+  }
+
+  return baseY
+}
+
 /**
  * Creates a roof group with one default gable segment
  */
@@ -36,6 +93,7 @@ const commitRoofPlacement = (
 
   const centerX = (corner1[0] + corner2[0]) / 2
   const centerZ = (corner1[2] + corner2[2]) / 2
+  const baseY = getRoofBaseY(levelId, centerX, centerZ, corner1, corner2)
 
   const width = Math.max(Math.abs(corner2[0] - corner1[0]), 1)
   const depth = Math.max(Math.abs(corner2[2] - corner1[2]), 1)
@@ -104,7 +162,7 @@ const commitRoofPlacement = (
   // Create the roof container
   const roof = RoofNode.parse({
     name,
-    position: [centerX, 0, centerZ],
+    position: [centerX, baseY, centerZ],
     children: [segment.id],
   })
 
@@ -177,8 +235,17 @@ export const RoofTool: React.FC = () => {
       const gridZ = Math.round(event.localPosition[2] * 2) / 2
       const y = event.localPosition[1]
 
-      const cursorPosition: [number, number, number] = [gridX, y, gridZ]
-      const gridY = y + GRID_OFFSET
+      const previewBaseY = corner1Ref.current
+        ? getRoofBaseY(
+            currentLevelId,
+            (corner1Ref.current[0] + gridX) / 2,
+            (corner1Ref.current[2] + gridZ) / 2,
+            corner1Ref.current,
+            [gridX, y, gridZ],
+          )
+        : getRoofBaseY(currentLevelId, gridX, gridZ)
+      const cursorPosition: [number, number, number] = [gridX, previewBaseY, gridZ]
+      const gridY = previewBaseY + GRID_OFFSET
 
       cursorRef.current.position.set(gridX, gridY, gridZ)
 
@@ -211,10 +278,17 @@ export const RoofTool: React.FC = () => {
       const y = event.localPosition[1]
 
       if (corner1Ref.current) {
+        const baseY = getRoofBaseY(
+          currentLevelId,
+          (corner1Ref.current[0] + gridX) / 2,
+          (corner1Ref.current[2] + gridZ) / 2,
+          corner1Ref.current,
+          [gridX, y, gridZ],
+        )
         const roofId = commitRoofPlacement(
           currentLevelId,
           corner1Ref.current,
-          [gridX, y, gridZ],
+          [gridX, baseY, gridZ],
           selectedIdsRef.current,
         )
 
@@ -223,7 +297,7 @@ export const RoofTool: React.FC = () => {
         corner1Ref.current = null
         outlineRef.current.visible = false
       } else {
-        corner1Ref.current = [gridX, y, gridZ]
+        corner1Ref.current = [gridX, getRoofBaseY(currentLevelId, gridX, gridZ), gridZ]
         setPreview((prev) => ({
           ...prev,
           corner1: corner1Ref.current,
