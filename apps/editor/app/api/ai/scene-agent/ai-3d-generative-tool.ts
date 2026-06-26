@@ -768,18 +768,6 @@ const TIMBERTECH_PERGOLA_SOURCE_BOUNDS = {
   minY: -37.11911955144969,
   floorY: 124.308,
 }
-const DECK_082523_SOURCE_FOOTPRINT = {
-  width: 264,
-  depth: 220.75,
-  minY: 37.5,
-  surfaceY: 117.5,
-  centerX: 147.641,
-  centerZ: -33.625,
-  surfaceWidth: 264,
-  surfaceDepth: 144,
-  surfaceCenterX: 147.641,
-  surfaceCenterZ: -72,
-}
 const DECK_STAIRS_SOURCE_FOOTPRINT = {
   width: 243.5,
   depth: 119,
@@ -2218,7 +2206,6 @@ function roundMeters(value: number): number {
 }
 
 function getDeckSupportSource(deckAsset: AiFurnitureAsset) {
-  if (deckAsset.id === 'deck-082523') return DECK_082523_SOURCE_FOOTPRINT
   if (deckAsset.id === 'deck-stairs-guardrails') return DECK_STAIRS_SOURCE_FOOTPRINT
   return null
 }
