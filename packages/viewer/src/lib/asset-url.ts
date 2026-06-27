@@ -1,18 +1,16 @@
 import { loadAssetUrl } from '@pascal-app/core'
 
-export const ASSETS_CDN_URL = process.env.NEXT_PUBLIC_ASSETS_CDN_URL || 'https://editor.pascal.app'
-const DEFAULT_ASSETS_CDN_URL = 'https://editor.pascal.app'
+export const ASSETS_CDN_URL = process.env.NEXT_PUBLIC_ASSETS_CDN_URL || ''
 
 function resolvePathUrl(url: string): string {
   const normalizedPath = url.startsWith('/') ? url : `/${url}`
-  if (
-    ASSETS_CDN_URL === DEFAULT_ASSETS_CDN_URL &&
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ) {
+  if (ASSETS_CDN_URL) {
+    return `${ASSETS_CDN_URL.replace(/\/+$/, '')}${normalizedPath}`
+  }
+  if (typeof window !== 'undefined') {
     return `${window.location.origin}${normalizedPath}`
   }
-  return `${ASSETS_CDN_URL}${normalizedPath}`
+  return normalizedPath
 }
 
 /**
