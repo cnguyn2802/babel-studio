@@ -1686,8 +1686,13 @@ function outdoorLivingTemplateActionsForPrompt(message: string): Ai3DGenerativeA
     (wantsDeck && wantsPergola) ||
     normalized.includes('lounge') ||
     normalized.includes('seating')
-  const deckAssetId = inferDeckAssetId(message)
-  const pergolaAssetId = inferPergolaAssetId(message)
+  const useDeckStairsWoodenPergola = isDeckWithPergolaSuggestionPrompt(normalized)
+  const deckAssetId = useDeckStairsWoodenPergola
+    ? 'deck-stairs-guardrails'
+    : inferDeckAssetId(message)
+  const pergolaAssetId = useDeckStairsWoodenPergola
+    ? 'wooden-building-pergola'
+    : inferPergolaAssetId(message)
 
   if (wantsDeck && wantsPergola) {
     return createOutdoorLivingActions(message, {
@@ -1794,6 +1799,10 @@ function createOutdoorLivingActions(
       return { tool: 'add_furniture' as const, arguments: args }
     }),
   ]
+}
+
+function isDeckWithPergolaSuggestionPrompt(normalized: string): boolean {
+  return normalized === 'generate a deck with pergola' || normalized === 'generate deck with pergola'
 }
 
 function selectOutdoorLivingFurniture(
