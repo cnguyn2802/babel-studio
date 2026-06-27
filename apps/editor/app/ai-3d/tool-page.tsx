@@ -178,8 +178,8 @@ type LocalPlacementItem = LocalAssetPlacementItem | LocalBuildPlacementItem
 
 const EXAMPLES = [
   'Create a compact living room',
-  'Generate a small studio room',
-  'Create a simple house shell',
+  'Design a backyard garden',
+  'Generate a deck with pergola',
   'Add a door and window',
 ] as const
 
