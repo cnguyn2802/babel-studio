@@ -213,7 +213,7 @@ const STARTER_TEMPLATES: Array<{
     id: 'deck-pergola',
     title: 'Deck pergola',
     prompt:
-      'Use starter template deck-pergola. Create an outdoor living deck with pergola.',
+      'Use starter template deck-pergola. Create an outdoor living deck with local assetIds: deck-082523, pergola-3.',
     icon: Package,
     iconClass: 'bg-emerald-50 text-emerald-600',
     shellClass: 'hover:border-emerald-200 hover:bg-emerald-50/50',

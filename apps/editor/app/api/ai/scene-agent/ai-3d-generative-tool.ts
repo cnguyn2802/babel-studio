@@ -1673,11 +1673,7 @@ function outdoorLivingTemplateActionsForPrompt(message: string): Ai3DGenerativeA
     (wantsDeck && wantsPergola) ||
     normalized.includes('lounge') ||
     normalized.includes('seating')
-  const inferredDeckAssetId = inferDeckAssetId(message)
-  const deckAssetId =
-    inferredDeckAssetId === 'deck-082523' && wantsDeck && wantsPergola && wantsOutdoorLiving
-      ? 'deck-stairs-guardrails'
-      : inferredDeckAssetId
+  const deckAssetId = inferDeckAssetId(message)
   const pergolaAssetId = inferPergolaAssetId(message)
 
   if (wantsDeck && wantsPergola) {
