@@ -2205,6 +2205,10 @@ function roundMeters(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
+function resolveSupportedSurfaceY(requestedY: number | null, surfaceY: number): number {
+  return roundMeters(Math.max(requestedY ?? surfaceY, surfaceY))
+}
+
 function getDeckSupportSource(deckAsset: AiFurnitureAsset) {
   if (deckAsset.id === 'deck-stairs-guardrails') return DECK_STAIRS_SOURCE_FOOTPRINT
   return null
@@ -2875,7 +2879,8 @@ class GraphSession {
     const supportYOffset = support
       ? getPergolaSupportYOffset(pergolaAsset, width, height, depth, support)
       : 0
-    const y = readNumberArg(args, 'y') ?? (support ? support.surfaceY - supportYOffset : 0)
+    const requestedY = readNumberArg(args, 'y')
+    const y = roundMeters(support ? support.surfaceY - supportYOffset : (requestedY ?? 0))
     const rotationY = readNumberArg(args, 'rotationY') ?? 0
     const name =
       typeof args.name === 'string' && args.name.trim() ? args.name.trim() : 'Outdoor pergola'
@@ -2891,6 +2896,7 @@ class GraphSession {
       metadata.supportedByDeckId = support.deckItemId
       metadata.supportDeckAssetId = support.deckAssetId
       metadata.supportSurfaceY = support.surfaceY
+      metadata.resolvedSurfaceY = y
     }
 
     const pergola = ItemNode.parse({
@@ -3046,7 +3052,13 @@ class GraphSession {
       metadata: {
         aiTool: 'add_furniture',
         assetId: asset.id,
-        ...(deckSupport ? { supportedByDeckId: deckSupport.deckItemId } : {}),
+        ...(deckSupport
+          ? {
+              supportedByDeckId: deckSupport.deckItemId,
+              supportDeckAssetId: deckSupport.deckAssetId,
+              supportSurfaceY: deckSupport.surfaceY,
+            }
+          : {}),
       },
     })
     this.applyPatch([{ op: 'create', node: item, parentId: levelId }])
@@ -3139,7 +3151,10 @@ class GraphSession {
     if (requestedX !== null || requestedY !== null || requestedZ !== null) {
       const x = requestedX ?? 0
       const z = requestedZ ?? 0
-      const y = requestedY ?? this.findOutdoorLivingDeckSupportAt(x, z)?.surfaceY ?? 0
+      const deckSupport = this.findOutdoorLivingDeckSupportAt(x, z)
+      const y = deckSupport
+        ? resolveSupportedSurfaceY(requestedY, deckSupport.surfaceY)
+        : (requestedY ?? 0)
       return [roundMeters(x), roundMeters(y), roundMeters(z)]
     }
 
