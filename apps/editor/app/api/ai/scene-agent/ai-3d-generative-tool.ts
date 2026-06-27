@@ -2279,8 +2279,10 @@ function getPergolaSupportYOffset(
   width: number,
   height: number,
   depth: number,
+  support?: { deckAssetId?: string | null } | null,
 ): number {
   if (pergolaAsset.id !== 'wooden-building-pergola') return 0
+  if (support?.deckAssetId === 'deck-stairs-guardrails') return 0
 
   const source = TIMBERTECH_PERGOLA_SOURCE_BOUNDS
   const fitScale = Math.min(width / source.width, height / source.height, depth / source.depth)
@@ -2871,7 +2873,7 @@ class GraphSession {
       12,
     )
     const supportYOffset = support
-      ? getPergolaSupportYOffset(pergolaAsset, width, height, depth)
+      ? getPergolaSupportYOffset(pergolaAsset, width, height, depth, support)
       : 0
     const y = readNumberArg(args, 'y') ?? (support ? support.surfaceY - supportYOffset : 0)
     const rotationY = readNumberArg(args, 'rotationY') ?? 0
@@ -2887,6 +2889,7 @@ class GraphSession {
     }
     if (support) {
       metadata.supportedByDeckId = support.deckItemId
+      metadata.supportDeckAssetId = support.deckAssetId
       metadata.supportSurfaceY = support.surfaceY
     }
 
@@ -2914,6 +2917,7 @@ class GraphSession {
       position: [x, y, z],
       rotationY,
       supportedByDeckId: support?.deckItemId ?? null,
+      supportDeckAssetId: support?.deckAssetId ?? null,
       supportWidth: support?.width ?? null,
       supportDepth: support?.depth ?? null,
       supportSurfaceY: support?.surfaceY ?? null,
@@ -3162,9 +3166,20 @@ class GraphSession {
   private findOutdoorLivingDeckSupportAt(
     x: number,
     z: number,
-  ): { deckItemId: AnyNodeId; surfaceY: number; width: number; depth: number } | null {
-    let best: { deckItemId: AnyNodeId; surfaceY: number; width: number; depth: number } | null =
-      null
+  ): {
+    deckItemId: AnyNodeId
+    deckAssetId: string | null
+    surfaceY: number
+    width: number
+    depth: number
+  } | null {
+    let best: {
+      deckItemId: AnyNodeId
+      deckAssetId: string | null
+      surfaceY: number
+      width: number
+      depth: number
+    } | null = null
     for (const node of Object.values(this.graph.nodes)) {
       if (node.type !== 'item') continue
       const metadata =
@@ -3203,7 +3218,11 @@ class GraphSession {
           ? metadata.surfaceY
           : deckY + (node.asset.surface?.height ?? 0)
       if (!best || surfaceY > best.surfaceY) {
-        best = { deckItemId: node.id as AnyNodeId, surfaceY, width, depth }
+        const deckAssetId =
+          typeof metadata.assetId === 'string' && metadata.assetId.trim()
+            ? metadata.assetId
+            : node.asset.id
+        best = { deckItemId: node.id as AnyNodeId, deckAssetId, surfaceY, width, depth }
       }
     }
     return best
