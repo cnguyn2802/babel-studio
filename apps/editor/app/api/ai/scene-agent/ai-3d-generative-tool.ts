@@ -734,8 +734,6 @@ const ROOM_LAYOUT_DEFS: Record<RoomLayoutType, RoomLayoutDefinition> = {
       { assetId: 'bush', x: 2.45, z: -0.1 },
       { assetId: 'patio-umbrella', x: 0, z: 0.85 },
       { assetId: 'sunbed', x: 0.9, z: 0.15, rotationY: -Math.PI / 2 },
-      { assetId: 'fence', x: -3.3, z: -1.25, rotationY: Math.PI / 2 },
-      { assetId: 'fence', x: 3.3, z: -1.25, rotationY: Math.PI / 2 },
     ],
   },
   house: {
@@ -2547,6 +2545,74 @@ function actionCreatedOutdoorArea(result: ActionResult): boolean {
   return Boolean((result.result as { openOutdoorArea?: unknown }).openOutdoorArea)
 }
 
+function shouldCreateGardenBoundaryFences(roomType: string): boolean {
+  const normalized = normalizeAssetQuery(roomType)
+  return (
+    normalized.includes('garden') ||
+    normalized.includes('backyard') ||
+    normalized.includes('yard') ||
+    normalized.includes('landscape')
+  )
+}
+
+function createGardenPartialBoundaryFences(
+  name: string,
+  roomType: string,
+  width: number,
+  depth: number,
+) {
+  const halfW = width / 2
+  const halfD = depth / 2
+  const inset = Math.min(0.3, Math.max(0.18, Math.min(width, depth) * 0.04))
+  const leftX = roundMeters(-halfW + inset)
+  const rightX = roundMeters(halfW - inset)
+  const backZ = roundMeters(-halfD + inset)
+  const sideEndZ = roundMeters(Math.min(halfD - inset, halfD * 0.3))
+  const specs = [
+    {
+      name: `${name} back garden fence`,
+      start: [leftX, backZ] as [number, number],
+      end: [rightX, backZ] as [number, number],
+    },
+    {
+      name: `${name} left garden fence`,
+      start: [leftX, backZ] as [number, number],
+      end: [leftX, sideEndZ] as [number, number],
+    },
+    {
+      name: `${name} right garden fence`,
+      start: [rightX, backZ] as [number, number],
+      end: [rightX, sideEndZ] as [number, number],
+    },
+  ]
+
+  return specs.map((spec, index) =>
+    FenceNode.parse({
+      name: spec.name,
+      start: spec.start,
+      end: spec.end,
+      height: 1.15,
+      thickness: 0.08,
+      baseHeight: 0.12,
+      postSpacing: 1.45,
+      postSize: 0.1,
+      topRailHeight: 0.06,
+      groundClearance: 0,
+      baseStyle: 'grounded',
+      showInfill: true,
+      color: '#e5e7eb',
+      style: 'slat',
+      material: WOOD_MATERIAL,
+      metadata: {
+        aiTool: 'create_room',
+        roomType,
+        gardenBoundary: true,
+        edgeIndex: index,
+      },
+    }),
+  )
+}
+
 function isGeneratedOutdoorLivingNode(node: AnyNodeType): boolean {
   const metadata =
     node.metadata && typeof node.metadata === 'object'
@@ -2701,9 +2767,13 @@ class GraphSession {
     })
     const slab = SlabNode.parse({ polygon, metadata: { aiTool: 'create_room', roomType } })
     if (openOutdoorArea) {
+      const gardenFences = shouldCreateGardenBoundaryFences(roomType)
+        ? createGardenPartialBoundaryFences(name, roomType, width, depth)
+        : []
       this.applyPatch([
         { op: 'create', node: zone, parentId: levelId },
         { op: 'create', node: slab, parentId: levelId },
+        ...gardenFences.map((fence) => ({ op: 'create' as const, node: fence, parentId: levelId })),
       ])
 
       return {
@@ -2711,6 +2781,7 @@ class GraphSession {
         slabId: slab.id,
         ceilingId: null,
         wallIds: [],
+        fenceIds: gardenFences.map((fence) => fence.id),
         width,
         depth,
         areaSqMeters: Math.round(width * depth * 100) / 100,

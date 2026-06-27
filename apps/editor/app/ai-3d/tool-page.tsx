@@ -22,9 +22,9 @@ import { useGLTFKTX2, useViewer } from '@pascal-app/viewer'
 import {
   Box,
   Building2,
-  BedDouble,
   ChevronRight,
   CircleDot,
+  CookingPot,
   Download,
   Eye,
   EyeOff,
@@ -201,11 +201,11 @@ const STARTER_TEMPLATES: Array<{
     shellClass: 'hover:border-orange-200 hover:bg-orange-50/45',
   },
   {
-    id: 'bed-room',
-    title: 'Bed room',
+    id: 'kitchen',
+    title: 'Kitchen',
     prompt:
-      'Use starter template bed-room. Create a calm bedroom with local assetIds: double-bed, bedside-table, table-lamp, dresser, closet, rectangular-carpet.',
-    icon: BedDouble,
+      'Use starter template kitchen. Create a compact kitchen with local assetIds: kitchen-counter, kitchen-cabinet, kitchen-fridge, stove, microwave, coffee-machine.',
+    icon: CookingPot,
     iconClass: 'bg-blue-50 text-blue-600',
     shellClass: 'hover:border-blue-200 hover:bg-blue-50/55',
   },
