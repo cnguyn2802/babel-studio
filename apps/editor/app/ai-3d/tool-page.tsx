@@ -542,6 +542,7 @@ const LOCAL_PLACEMENT_ITEMS: LocalPlacementItem[] = [
     category: 'outdoor',
     modelPath: '/items/deck/deck_082523.glb',
     dimensions: [14.4, 1.05, 9.6],
+    surfaceHeight: 4.405,
     tags: ['deck', 'patio', 'outdoor-living', 'platform'],
   },
   {

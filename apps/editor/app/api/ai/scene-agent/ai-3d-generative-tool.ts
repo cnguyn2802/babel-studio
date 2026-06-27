@@ -486,7 +486,7 @@ const AI_FURNITURE_ASSETS: AiFurnitureAsset[] = [
     modelPath: '/items/deck/deck_082523.glb',
     thumbnailPath: '/icons/floor.png',
     fitToDimensions: true,
-    surfaceHeight: 0.16,
+    surfaceHeight: 4.405,
   },
   {
     id: 'deck-chair-hanged',
@@ -768,6 +768,18 @@ const TIMBERTECH_PERGOLA_SOURCE_BOUNDS = {
   minY: -37.11911955144969,
   floorY: 124.308,
 }
+const DECK_082523_SOURCE_FOOTPRINT = {
+  width: 263.99996757507324,
+  depth: 220.75,
+  minY: 37.5,
+  surfaceY: 118.25,
+  centerX: 147.6414041519165,
+  centerZ: -33.625,
+  surfaceWidth: 263.99996757507324,
+  surfaceDepth: 144,
+  surfaceCenterX: 147.6414041519165,
+  surfaceCenterZ: -72,
+}
 const DECK_STAIRS_SOURCE_FOOTPRINT = {
   width: 243.5,
   depth: 119,
@@ -874,6 +886,9 @@ export async function handleAi3DGenerativeToolRequest(request: NextRequest) {
     const plannerRewroteActions = plannedActions !== plan.actions
 
     const actionResults: ActionResult[] = []
+    if (plannedActions.some((action) => action.tool === 'create_deck')) {
+      session.clearGeneratedOutdoorLiving()
+    }
     for (const action of plannedActions) {
       actionResults.push(
         await executeAction(action, session, store, source.meta?.name ?? 'Pascal scene'),
@@ -2210,6 +2225,7 @@ function resolveSupportedSurfaceY(requestedY: number | null, surfaceY: number): 
 }
 
 function getDeckSupportSource(deckAsset: AiFurnitureAsset) {
+  if (deckAsset.id === 'deck-082523') return DECK_082523_SOURCE_FOOTPRINT
   if (deckAsset.id === 'deck-stairs-guardrails') return DECK_STAIRS_SOURCE_FOOTPRINT
   return null
 }
@@ -2531,6 +2547,21 @@ function actionCreatedOutdoorArea(result: ActionResult): boolean {
   return Boolean((result.result as { openOutdoorArea?: unknown }).openOutdoorArea)
 }
 
+function isGeneratedOutdoorLivingNode(node: AnyNodeType): boolean {
+  const metadata =
+    node.metadata && typeof node.metadata === 'object'
+      ? (node.metadata as Record<string, unknown>)
+      : {}
+  return (
+    metadata.outdoorLiving === true ||
+    typeof metadata.supportedByDeckId === 'string' ||
+    typeof metadata.supportDeckAssetId === 'string' ||
+    metadata.roomType === 'deck' ||
+    metadata.roomType === 'pergola' ||
+    metadata.roomType === 'outdoor-living'
+  )
+}
+
 class GraphSession {
   private graph: SceneGraph
   private activeScene: ActiveSceneMeta | null
@@ -2557,6 +2588,16 @@ class GraphSession {
 
   exportSceneGraph(): SceneGraph {
     return cloneGraph(this.graph)
+  }
+
+  clearGeneratedOutdoorLiving() {
+    const ids = Object.values(this.graph.nodes)
+      .filter(isGeneratedOutdoorLivingNode)
+      .map((node) => node.id as AnyNodeId)
+    if (ids.length === 0) return { deletedIds: [] }
+
+    this.applyPatch(ids.map((id) => ({ op: 'delete' as const, id, cascade: true })))
+    return { deletedIds: ids }
   }
 
   validateScene() {
